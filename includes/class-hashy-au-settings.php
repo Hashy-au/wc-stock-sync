@@ -55,6 +55,9 @@ final class Hashy_AU_Settings {
                 'agent_code' => '',
                 'shared_secret' => '', // single shared secret (sign outbound + verify inbound)
             ],
+            'updates' => [
+                'github_token' => '', // fine-grained PAT, Contents: Read-only on the plugin repo
+            ],
         ];
 
         $saved = get_option($this->option_name, []);
@@ -138,6 +141,10 @@ final class Hashy_AU_Settings {
             $out['agent']['shared_secret'] = sanitize_text_field((string) ($input['agent']['shared_secret'] ?? ''));
         }
 
+        if (isset($input['updates']) && is_array($input['updates'])) {
+            $out['updates']['github_token'] = sanitize_text_field((string) ($input['updates']['github_token'] ?? ''));
+        }
+
         if (isset($input['host']) && is_array($input['host'])) {
             $agents = $input['host']['agents'] ?? [];
             $clean_agents = [];
@@ -219,6 +226,14 @@ final class Hashy_AU_Settings {
                                 <input type="checkbox" name="<?php echo esc_attr($option); ?>[normalize_skus]" value="yes" <?php checked('yes', (string) ($settings['normalize_skus'] ?? 'yes')); ?> />
                                 Enable SKU normalization (strip 3-letter prefixes like PRM-, remove -/_/spaces, uppercase)
                             </label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">GitHub Update Token</th>
+                        <td>
+                            <input id="wcss_github_token" type="password" autocomplete="off" style="width: 420px" name="<?php echo esc_attr($option); ?>[updates][github_token]" value="<?php echo esc_attr((string) ($settings['updates']['github_token'] ?? '')); ?>" />
+                            <a href="#" class="button" data-wcss-toggle-target="#wcss_github_token">Show</a>
+                            <p class="description">Fine-grained GitHub personal access token for automatic plugin updates from the private repo (scope: this repo only, permission <strong>Contents: Read-only</strong>). Leave empty to disable update checks. Can also be set via <code>WCSS_GITHUB_TOKEN</code> in wp-config.php.</p>
                         </td>
                     </tr>
                 </table>
