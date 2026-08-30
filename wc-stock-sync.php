@@ -3,13 +3,13 @@
  * Plugin Name: WC Stock Sync
  * Plugin URI: https://hashy.com.au
  * Description: Host + Agent WooCommerce stock/price sync.
- * Version: 0.4.12
+ * Version: 0.5.0
  * Author: Hashy-au
  * Text Domain: wc-stock-sync
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * WC requires at least: 7.0
- * WC tested up to: 9.0
+ * WC tested up to: 10.1
  *
  * @package Hashy_AU
  */
@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('WC_STOCK_SYNC_VERSION', '0.4.12');
+define('WC_STOCK_SYNC_VERSION', '0.5.0');
 define('HASHY_AU_PLUGIN_FILE', __FILE__);
 define('WC_STOCK_SYNC_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('WC_STOCK_SYNC_PLUGIN_URL', plugin_dir_url(__FILE__));
