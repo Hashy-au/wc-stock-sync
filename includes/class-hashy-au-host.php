@@ -15,6 +15,24 @@ final class Hashy_AU_Host {
 
     private string $route_namespace = 'hashy-sync/v1';
 
+    /**
+     * When true, stock hooks do not trigger outbound pushes (used while
+     * applying inbound changes or batch-applying a stocktake).
+     */
+    private static bool $suppress_push = false;
+
+    /**
+     * Product IDs already pushed during this request (coalesces the qty and
+     * stock-status hooks firing for the same save).
+     *
+     * @var array<int, bool>
+     */
+    private static array $pushed_ids = [];
+
+    public static function suppress_pushes(bool $suppress): void {
+        self::$suppress_push = $suppress;
+    }
+
     public static function instance(): self {
         if (null === self::$instance) {
             self::$instance = new self();
@@ -30,6 +48,8 @@ final class Hashy_AU_Host {
 
         add_action('woocommerce_product_set_stock', [$this, 'on_stock_changed'], 10, 1);
         add_action('woocommerce_variation_set_stock', [$this, 'on_stock_changed'], 10, 1);
+        add_action('woocommerce_product_set_stock_status', [$this, 'on_stock_status_changed'], 10, 3);
+        add_action('woocommerce_variation_set_stock_status', [$this, 'on_stock_status_changed'], 10, 3);
 
         // Retry queue.
         add_action('wcss_retry_failed_requests', [$this, 'process_failed_queue']);
@@ -127,6 +147,14 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
             return new WP_REST_Response(['ok' => true, 'deduped' => true], 200);
         }
 
+        // Mark seen BEFORE applying: if the request dies mid-loop, an agent
+        // retry must not decrement the already-applied items a second time.
+        $this->mark_order_seen($agent_url, $order_id);
+
+        // Suppress hook-driven pushes while decrementing; the explicit loop
+        // below pushes once per unique touched product instead.
+        self::suppress_pushes(true);
+
         $touched_ids = [];
         foreach ($items as $row) {
             if (!is_array($row)) {
@@ -156,7 +184,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
             $touched_ids[] = (int) $product_id;
         }
 
-        $this->mark_order_seen($agent_url, $order_id);
+        self::suppress_pushes(false);
 
         // Push updated stock to ALL agents for all touched SKUs.
         $touched_ids = array_values(array_unique(array_filter($touched_ids)));
@@ -182,10 +210,46 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
         if (!$product instanceof WC_Product) {
             return;
         }
+        $this->maybe_push_product($product);
+    }
 
-        // Prevent loops if the change originated from remote sync.
-        $flag = (string) $product->get_meta('_hashy_au_remote_sync');
-        if ($flag === '1') {
+    /**
+     * Stock-status-only changes (e.g. toggling a non-stock-managed product
+     * out of stock) don't fire the set_stock hooks, so listen separately.
+     *
+     * @param int|mixed        $product_id Product/variation ID.
+     * @param string|mixed     $status     New stock status (unused; payload rebuilds it).
+     * @param WC_Product|mixed $product    Product object when provided by WC.
+     */
+    public function on_stock_status_changed($product_id, $status = '', $product = null): void {
+        if (!$product instanceof WC_Product) {
+            $product = wc_get_product((int) $product_id);
+        }
+        if (!$product instanceof WC_Product) {
+            return;
+        }
+        $this->maybe_push_product($product);
+    }
+
+    /**
+     * Single outbound-push funnel: honors suppression, coalesces multiple
+     * hooks per product within one request, and refuses variations without
+     * their own SKU (get_sku() would fall back to the parent SKU and agents
+     * would apply the variation's stock to the parent product).
+     */
+    private function maybe_push_product(WC_Product $product): void {
+        if (self::$suppress_push) {
+            return;
+        }
+
+        $pid = (int) $product->get_id();
+        if (isset(self::$pushed_ids[$pid])) {
+            return;
+        }
+        self::$pushed_ids[$pid] = true;
+
+        if ($product->is_type('variation') && '' === (string) $product->get_sku('edit')) {
+            Hashy_AU_Logger::instance()->info('Skipping push for variation without own SKU', ['product_id' => $pid]);
             return;
         }
 
@@ -407,7 +471,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
             'host_url' => untrailingslashit(home_url()),
             'product_id' => (int) $product->get_id(),
             'sku' => (string) $product->get_sku(),
-            'stock_qty' => (int) $product->get_stock_quantity(),
+            'stock_qty' => $product->managing_stock() ? (int) $product->get_stock_quantity() : null,
             'stock_status' => (string) $this->compute_stock_status($product),
             'manage_stock' => (bool) $product->managing_stock(),
             'price' => $product->get_price(),
@@ -472,6 +536,9 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
             'posts_per_page' => $per_page,
             'offset' => $offset,
             'fields' => 'ids',
+            'orderby' => 'ID',
+            'order' => 'ASC',
+            'no_found_rows' => true,
             'meta_query' => [
                 [
                     'key' => '_sku',
