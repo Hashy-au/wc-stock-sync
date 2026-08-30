@@ -355,7 +355,7 @@ public function map_to_host_sku(string $incoming_sku): string {
             if ($sku === '') {
                 continue;
             }
-            $norm = Hashy_AU_SKU::normalize($sku, Hashy_AU_Settings::instance()->get_normalization_enabled(), Hashy_AU_Settings::instance()->get_normalization_prefix_len());
+            $norm = (string) ($it['normalized_key'] ?? Hashy_AU_SKU::normalize($sku));
             fputcsv($out, [
                 (string) ($it['product_name'] ?? ''),
                 (string) ($it['variation_name'] ?? ''),

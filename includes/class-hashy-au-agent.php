@@ -335,34 +335,34 @@ public function send_test_order_paid_by_sku(string $sku, int $qty = 1): array {
 
         $normalize = Hashy_AU_Settings::instance()->normalize_skus_enabled();
 
-        $q = new WP_Query([
-            'post_type' => ['product', 'product_variation'],
-            'post_status' => ['publish', 'private', 'draft'],
-            'posts_per_page' => 5000,
-            'fields' => 'ids',
-            'meta_query' => [
-                [
-                    'key' => '_sku',
-                    'compare' => 'EXISTS',
-                ],
-            ],
-        ]);
-
         $set = [];
-        if (is_array($q->posts)) {
-            foreach ($q->posts as $pid) {
-                $sku = (string) get_post_meta((int) $pid, '_sku', true);
-                if ($sku === '') {
-                    continue;
-                }
-                $norm = $normalize ? Hashy_AU_SKU::normalize($sku) : $sku;
-                if ($norm !== '') {
-                    $set[$norm] = true;
-                }
+        foreach (Hashy_AU_Catalog::instance()->get_all_sku_rows() as $sku) {
+            $norm = $normalize ? Hashy_AU_SKU::normalize($sku) : $sku;
+            if ($norm !== '') {
+                $set[$norm] = true;
             }
         }
 
         return new WP_REST_Response(['ok' => true, 'skus' => array_keys($set)], 200);
+    }
+
+    /**
+     * Detailed SKU index for the Host's Import/Export tooling. This route was
+     * registered but never implemented, so it returned 500 and the Host's
+     * fetch_agent_sku_items() silently produced empty synced-SKU exports.
+     */
+    public function rest_host_sku_index_detailed(WP_REST_Request $request): WP_REST_Response {
+        $raw_body = (string) $request->get_body();
+        $timestamp = (string) $request->get_header('x-hashy-timestamp');
+        $signature = (string) $request->get_header('x-hashy-signature');
+
+        $secret = Hashy_AU_Settings::instance()->get_agent_shared_secret();
+        if (empty($secret) || !Hashy_AU_Crypto::verify($secret, $timestamp, $raw_body, $signature)) {
+            Hashy_AU_Logger::instance()->warning('Bad signature on sku-index-detailed', []);
+            return new WP_REST_Response(['ok' => false, 'error' => 'bad_signature'], 403);
+        }
+
+        return new WP_REST_Response(['ok' => true, 'items' => Hashy_AU_Catalog::instance()->get_local_sku_items()], 200);
     }
 
 
@@ -483,31 +483,7 @@ public function rest_host_stock_update(WP_REST_Request $request): WP_REST_Respon
     }
 
     private function find_product_id_by_normalized_sku(string $normalized): int {
-        if (empty($normalized)) {
-            return 0;
-        }
-
-        $q = new WP_Query([
-            'post_type' => ['product', 'product_variation'],
-            'post_status' => ['publish', 'private', 'draft'],
-            'posts_per_page' => 50,
-            'meta_query' => [
-                [
-                    'key' => '_sku',
-                    'compare' => 'EXISTS',
-                ],
-            ],
-            'fields' => 'ids',
-        ]);
-
-        foreach ($q->posts as $pid) {
-            $sku = (string) get_post_meta($pid, '_sku', true);
-            if (Hashy_AU_SKU::normalize($sku) === $normalized) {
-                return (int) $pid;
-            }
-        }
-
-        return 0;
+        return Hashy_AU_Catalog::instance()->find_product_id_by_normalized_sku($normalized);
     }
 
     private function enqueue_outbox(array $entry): void {

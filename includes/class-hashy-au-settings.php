@@ -134,7 +134,7 @@ final class Hashy_AU_Settings {
 
         if (isset($input['agent']) && is_array($input['agent'])) {
             $out['agent']['host_url'] = esc_url_raw((string) ($input['agent']['host_url'] ?? ''));
-            $out['agent']['agent_code'] = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string) ($input['agent']['agent_code'] ?? '')));
+            $out['agent']['agent_code'] = preg_replace('/[^A-Z0-9]/', '', strtoupper((string) ($input['agent']['agent_code'] ?? '')));
             $out['agent']['shared_secret'] = sanitize_text_field((string) ($input['agent']['shared_secret'] ?? ''));
         }
 
@@ -701,9 +701,14 @@ final class Hashy_AU_Settings {
             return;
         }
 
-        $host_missing = get_option('hashy_au_missing_skus', []);
+        $host_missing = get_option('hashy_au_host_missing_skus', []);
         if (!is_array($host_missing)) {
             $host_missing = [];
+        }
+        // Merge entries recorded under the legacy (misread) option key.
+        $legacy_missing = get_option('hashy_au_missing_skus', []);
+        if (is_array($legacy_missing) && !empty($legacy_missing)) {
+            $host_missing = array_replace_recursive($legacy_missing, $host_missing);
         }
         $agent_missing = get_option('hashy_au_agent_missing_skus', []);
         if (!is_array($agent_missing)) {

@@ -30,11 +30,13 @@ final class Hashy_AU_Bootstrap {
         require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-crypto.php';
         require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-logger.php';
         require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-sku.php';
+        require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-catalog.php';
         require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-mapping.php';
         require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-host.php';
         require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-agent.php';
 
         Hashy_AU_Settings::instance()->init();
+        Hashy_AU_Catalog::instance()->init();
         Hashy_AU_Mapping::instance()->init();
 
         $mode = Hashy_AU_Settings::instance()->get_mode();
