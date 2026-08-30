@@ -233,7 +233,7 @@ final class Hashy_AU_Settings {
                         <td>
                             <input id="wcss_github_token" type="password" autocomplete="off" style="width: 420px" name="<?php echo esc_attr($option); ?>[updates][github_token]" value="<?php echo esc_attr((string) ($settings['updates']['github_token'] ?? '')); ?>" />
                             <a href="#" class="button" data-wcss-toggle-target="#wcss_github_token">Show</a>
-                            <p class="description">Fine-grained GitHub personal access token for automatic plugin updates from the private repo (scope: this repo only, permission <strong>Contents: Read-only</strong>). Leave empty to disable update checks. Can also be set via <code>WCSS_GITHUB_TOKEN</code> in wp-config.php.</p>
+                            <p class="description">Optional. Updates come from the public GitHub repo and need no token; supply one only to raise the GitHub API rate limit or if the repo is ever made private (fine-grained, this repo only, <strong>Contents: Read-only</strong>). Can also be set via <code>WCSS_GITHUB_TOKEN</code> in wp-config.php.</p>
                         </td>
                     </tr>
                 </table>
