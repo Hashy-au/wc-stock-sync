@@ -635,38 +635,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
     }
 
     private function find_product_id_by_normalized_sku(string $normalized): int {
-        if ($normalized === '') {
-            return 0;
-        }
-
-        $q = new WP_Query([
-            'post_type' => ['product', 'product_variation'],
-            'post_status' => ['publish', 'private', 'draft'],
-            'posts_per_page' => 200,
-            'fields' => 'ids',
-            'meta_query' => [
-                [
-                    'key' => '_sku',
-                    'compare' => 'EXISTS',
-                ],
-            ],
-        ]);
-
-        if (!is_array($q->posts)) {
-            return 0;
-        }
-
-        foreach ($q->posts as $pid) {
-            $sku = (string) get_post_meta((int) $pid, '_sku', true);
-            if ($sku === '') {
-                continue;
-            }
-            if (Hashy_AU_SKU::normalize($sku) === $normalized) {
-                return (int) $pid;
-            }
-        }
-
-        return 0;
+        return Hashy_AU_Catalog::instance()->find_product_id_by_normalized_sku($normalized);
     }
 
     private function is_order_seen(string $agent_url, int $order_id): bool {
@@ -907,70 +876,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
      * Get Host SKU items (purchasable SKUs only: simple products + variations).
      */
     public function get_host_sku_items(): array {
-        $normalize = Hashy_AU_Settings::instance()->normalize_skus_enabled();
-
-        $q = new WP_Query([
-            'post_type' => ['product', 'product_variation'],
-            'post_status' => ['publish', 'private', 'draft'],
-            'posts_per_page' => 20000,
-            'fields' => 'ids',
-            'meta_query' => [
-                [
-                    'key' => '_sku',
-                    'compare' => 'EXISTS',
-                ],
-            ],
-        ]);
-
-        $items = [];
-        $seen = [];
-        if (is_array($q->posts)) {
-            foreach ($q->posts as $pid) {
-                $pid = (int) $pid;
-                $sku = (string) get_post_meta($pid, '_sku', true);
-                if ($sku === '') {
-                    continue;
-                }
-                $norm = $normalize ? Hashy_AU_SKU::normalize($sku) : strtoupper(trim($sku));
-                if ($norm === '') {
-                    continue;
-                }
-
-                $ptype = get_post_type($pid);
-                $is_var = ('product_variation' === $ptype);
-                if (isset($seen[$norm]) && !$is_var) {
-                    continue;
-                }
-                $seen[$norm] = true;
-
-                $product = wc_get_product($pid);
-                if (!$product) {
-                    continue;
-                }
-
-                $product_name = $product->get_name();
-                $variation_name = '';
-                $type = $is_var ? 'variation' : 'simple';
-                if ($is_var) {
-                    $parent_id = $product->get_parent_id();
-                    $parent = $parent_id ? wc_get_product($parent_id) : null;
-                    if ($parent) {
-                        $product_name = $parent->get_name();
-                    }
-                    $variation_name = wc_get_formatted_variation($product, true, false, true);
-                }
-
-                $items[] = [
-                    'sku' => $sku,
-                    'normalized_key' => $norm,
-                    'product_name' => $product_name,
-                    'variation_name' => $variation_name,
-                    'type' => $type,
-                ];
-            }
-        }
-
-        return $items;
+        return Hashy_AU_Catalog::instance()->get_local_sku_items();
     }
 
 }
