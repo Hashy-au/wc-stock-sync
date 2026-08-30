@@ -34,6 +34,7 @@ final class Hashy_AU_Bootstrap {
         require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-mapping.php';
         require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-host.php';
         require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-agent.php';
+        require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-stocktake.php';
 
         Hashy_AU_Settings::instance()->init();
         Hashy_AU_Catalog::instance()->init();
@@ -43,6 +44,7 @@ final class Hashy_AU_Bootstrap {
 
         if ('host' === $mode) {
             Hashy_AU_Host::instance()->init();
+            Hashy_AU_Stocktake::instance()->init();
         } else {
             Hashy_AU_Agent::instance()->init();
         }
