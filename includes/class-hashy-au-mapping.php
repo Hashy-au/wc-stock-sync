@@ -104,6 +104,7 @@ public function map_to_host_sku(string $incoming_sku): string {
         if (!current_user_can('manage_woocommerce')) {
             wp_die('Forbidden', 403);
         }
+        check_admin_referer('wcss_export');
         if ('host' !== Hashy_AU_Settings::instance()->get_mode()) {
             wp_die('Host mode only', 400);
         }
@@ -132,8 +133,9 @@ public function map_to_host_sku(string $incoming_sku): string {
         $groups = $this->build_normalized_groups($host_items, $agent_rows);
 
         $filename = 'wcss-all-skus-' . gmdate('Ymd-His') . '.csv';
+        nocache_headers();
         header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename=' . $filename);
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
 
         $out = fopen('php://output', 'w');
 
@@ -142,7 +144,7 @@ public function map_to_host_sku(string $incoming_sku): string {
             $headers[] = $k . '_name';
             $headers[] = $k . '_sku';
         }
-        fputcsv($out, $headers);
+        $this->write_csv_row($out, $headers);
 
         foreach ($groups as $g) {
             $row = [
@@ -157,7 +159,7 @@ public function map_to_host_sku(string $incoming_sku): string {
                 $row[] = (string) (($info['meta']['name'] ?? '') !== '' ? $info['meta']['name'] : (string) $k);
                 $row[] = (string) (($g['agents'][$k]['sku'] ?? '') ?: '');
             }
-            fputcsv($out, $row);
+            $this->write_csv_row($out, $row);
         }
 
         fclose($out);
@@ -168,6 +170,7 @@ public function map_to_host_sku(string $incoming_sku): string {
         if (!current_user_can('manage_woocommerce')) {
             wp_die('Forbidden', 403);
         }
+        check_admin_referer('wcss_export');
         if ('host' !== Hashy_AU_Settings::instance()->get_mode()) {
             wp_die('Host mode only', 400);
         }
@@ -205,8 +208,9 @@ public function map_to_host_sku(string $incoming_sku): string {
         }));
 
         $filename = 'wcss-synced-skus-' . gmdate('Ymd-His') . '.csv';
+        nocache_headers();
         header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename=' . $filename);
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
 
         $out = fopen('php://output', 'w');
 
@@ -215,7 +219,7 @@ public function map_to_host_sku(string $incoming_sku): string {
             $headers[] = $k . '_name';
             $headers[] = $k . '_sku';
         }
-        fputcsv($out, $headers);
+        $this->write_csv_row($out, $headers);
 
         foreach ($groups as $g) {
             $row = [
@@ -230,7 +234,7 @@ public function map_to_host_sku(string $incoming_sku): string {
                 $row[] = (string) (($info['meta']['name'] ?? '') !== '' ? $info['meta']['name'] : (string) $k);
                 $row[] = (string) (($g['agents'][$k]['sku'] ?? '') ?: '');
             }
-            fputcsv($out, $row);
+            $this->write_csv_row($out, $row);
         }
 
         fclose($out);
@@ -336,16 +340,18 @@ public function map_to_host_sku(string $incoming_sku): string {
         if (!current_user_can('manage_woocommerce')) {
             wp_die('Forbidden', 403);
         }
+        check_admin_referer('wcss_export');
 
         $items = Hashy_AU_Host::instance()->get_host_sku_items();
         $host = parse_url((string) home_url(), PHP_URL_HOST);
         $filename = 'wcss-local-skus-' . ($host ? preg_replace('/[^a-z0-9]+/i', '-', (string) $host) : 'site') . '-' . gmdate('Ymd-His') . '.csv';
 
+        nocache_headers();
         header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename=' . $filename);
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
 
         $out = fopen('php://output', 'w');
-        fputcsv($out, ['product_name', 'variation_name', 'sku', 'type', 'normalized_key']);
+        $this->write_csv_row($out, ['product_name', 'variation_name', 'sku', 'type', 'normalized_key']);
 
         foreach ($items as $it) {
             if (!is_array($it)) {
@@ -356,7 +362,7 @@ public function map_to_host_sku(string $incoming_sku): string {
                 continue;
             }
             $norm = (string) ($it['normalized_key'] ?? Hashy_AU_SKU::normalize($sku));
-            fputcsv($out, [
+            $this->write_csv_row($out, [
                 (string) ($it['product_name'] ?? ''),
                 (string) ($it['variation_name'] ?? ''),
                 $sku,
@@ -549,14 +555,16 @@ public function export_skus(): void {
         if (!current_user_can('manage_woocommerce')) {
             wp_die('Forbidden', 403);
         }
+        check_admin_referer('wcss_export');
 
         $filename = 'hashy-au-skus-' . gmdate('Ymd-His') . '.csv';
 
+        nocache_headers();
         header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename=' . $filename);
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
 
         $out = fopen('php://output', 'w');
-        fputcsv($out, ['Product Name', 'Variation Name', 'SKU', 'Product ID', 'Variation ID']);
+        $this->write_csv_row($out, ['Product Name', 'Variation Name', 'SKU', 'Product ID', 'Variation ID']);
 
         $args = [
             'limit' => -1,
@@ -576,7 +584,7 @@ public function export_skus(): void {
                 $sku = (string) $product->get_sku();
                 $parent = wc_get_product($product->get_parent_id());
                 $parent_name = $parent ? $parent->get_name() : '';
-                fputcsv($out, [
+                $this->write_csv_row($out, [
                     $parent_name,
                     $product->get_name(),
                     $sku,
@@ -587,7 +595,7 @@ public function export_skus(): void {
             }
 
             $sku = (string) $product->get_sku();
-            fputcsv($out, [$product->get_name(), '', $sku, $product->get_id(), '']);
+            $this->write_csv_row($out, [$product->get_name(), '', $sku, $product->get_id(), '']);
         }
 
         fclose($out);
@@ -598,21 +606,34 @@ public function export_skus(): void {
         if (!current_user_can('manage_woocommerce')) {
             wp_die('Forbidden', 403);
         }
+        check_admin_referer('wcss_export');
 
         $filename = 'hashy-au-mappings-' . gmdate('Ymd-His') . '.csv';
 
+        nocache_headers();
         header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename=' . $filename);
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
 
         $out = fopen('php://output', 'w');
-        fputcsv($out, ['normalized_sku', 'host_sku']);
+        $this->write_csv_row($out, ['normalized_sku', 'host_sku']);
 
         $m = $this->get_mappings();
         foreach ($m as $k => $v) {
-            fputcsv($out, [$k, $v]);
+            $this->write_csv_row($out, [$k, $v]);
         }
 
         fclose($out);
         exit;
+    }
+
+    /**
+     * Write one CSV row with formula-injection-safe cells and explicit
+     * fputcsv parameters (the default $escape is deprecated in PHP 8.4).
+     *
+     * @param resource $handle Output stream.
+     * @param array    $row    Row values.
+     */
+    private function write_csv_row($handle, array $row): void {
+        fputcsv($handle, array_map([Hashy_AU_Catalog::class, 'csv_safe'], $row), ',', '"', '');
     }
 }

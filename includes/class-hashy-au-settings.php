@@ -241,7 +241,8 @@ final class Hashy_AU_Settings {
                         <tr>
                             <th scope="row">Shared Secret</th>
                             <td>
-                                <input id="wcss_agent_shared_secret" type="text" style="width: 420px" name="<?php echo esc_attr($option); ?>[agent][shared_secret]" value="<?php echo esc_attr((string) ($settings['agent']['shared_secret'] ?? '')); ?>" />
+                                <input id="wcss_agent_shared_secret" type="password" autocomplete="off" style="width: 420px" name="<?php echo esc_attr($option); ?>[agent][shared_secret]" value="<?php echo esc_attr((string) ($settings['agent']['shared_secret'] ?? '')); ?>" />
+                                <a href="#" class="button" data-wcss-toggle-target="#wcss_agent_shared_secret">Show</a>
                                 <a href="#" class="button" data-wcss-gen-target="#wcss_agent_shared_secret">Generate</a>
                                 <a href="#" class="button" data-wcss-copy-target="#wcss_agent_shared_secret">Copy</a>
                                 <a href="#" class="button" data-wcss-test-host="1">Test Host</a>
@@ -284,7 +285,8 @@ final class Hashy_AU_Settings {
                                     <input type="url" style="width:100%" name="<?php echo esc_attr($option); ?>[host][agents][<?php echo esc_attr((string) $i); ?>][url]" value="<?php echo esc_attr((string) ($agent['url'] ?? '')); ?>" placeholder="https://agent-site.com" />
                                 </td>
                                 <td>
-                                    <input id="<?php echo esc_attr($secret_id); ?>" type="text" style="width:70%" name="<?php echo esc_attr($option); ?>[host][agents][<?php echo esc_attr((string) $i); ?>][shared_secret]" value="<?php echo esc_attr((string) ($agent['shared_secret'] ?? '')); ?>" />
+                                    <input id="<?php echo esc_attr($secret_id); ?>" type="password" autocomplete="off" style="width:70%" name="<?php echo esc_attr($option); ?>[host][agents][<?php echo esc_attr((string) $i); ?>][shared_secret]" value="<?php echo esc_attr((string) ($agent['shared_secret'] ?? '')); ?>" />
+                                    <a href="#" class="button" data-wcss-toggle-target="#<?php echo esc_attr($secret_id); ?>">Show</a>
                                     <a href="#" class="button" data-wcss-gen-target="#<?php echo esc_attr($secret_id); ?>">Generate</a>
                                     <a href="#" class="button" data-wcss-copy-target="#<?php echo esc_attr($secret_id); ?>">Copy</a>
                                 </td>
@@ -357,7 +359,8 @@ final class Hashy_AU_Settings {
                     <input type="url" style="width:100%" name="${option}[host][agents][${index}][url]" value="" placeholder="https://agent-site.com" />
                 </td>
                 <td>
-                    <input id="${secretId}" type="text" style="width:70%" name="${option}[host][agents][${index}][shared_secret]" value="" />
+                    <input id="${secretId}" type="password" autocomplete="off" style="width:70%" name="${option}[host][agents][${index}][shared_secret]" value="" />
+                    <a href="#" class="button" data-wcss-toggle-target="#${secretId}">Show</a>
                     <a href="#" class="button" data-wcss-gen-target="#${secretId}">Generate</a>
                     <a href="#" class="button" data-wcss-copy-target="#${secretId}">Copy</a>
                 </td>
@@ -388,6 +391,17 @@ final class Hashy_AU_Settings {
             if(!el) return;
             const secret = await genSecret();
             if(secret) el.value = secret;
+            return;
+        }
+
+        const toggleBtn = e.target.closest('[data-wcss-toggle-target]');
+        if(toggleBtn){
+            e.preventDefault();
+            const el = document.querySelector(toggleBtn.getAttribute('data-wcss-toggle-target'));
+            if(!el) return;
+            const show = el.type === 'password';
+            el.type = show ? 'text' : 'password';
+            toggleBtn.textContent = show ? 'Hide' : 'Show';
             return;
         }
 
@@ -559,7 +573,7 @@ final class Hashy_AU_Settings {
                 <div class="notice notice-warning" style="padding:12px;">
                     <p><strong>Import/Export mapping tools are available in Host mode only.</strong></p>
                     <p>You can still export this site’s purchasable SKUs to start mapping.</p>
-                    <p><a class="button button-primary" href="<?php echo esc_url(admin_url('admin-post.php?action=wcss_export_local_skus')); ?>">Export Local SKUs (CSV)</a></p>
+                    <p><a class="button button-primary" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=wcss_export_local_skus'), 'wcss_export')); ?>">Export Local SKUs (CSV)</a></p>
                 </div>
             <?php else : ?>
 
@@ -608,8 +622,8 @@ final class Hashy_AU_Settings {
 
                 <h2>Exports</h2>
                 <p>
-                    <a class="button button-primary" href="<?php echo esc_url(admin_url('admin-post.php?action=wcss_export_all_skus&' . $agents_qs)); ?>">Export All SKUs (CSV)</a>
-                    <a class="button" href="<?php echo esc_url(admin_url('admin-post.php?action=wcss_export_synced_skus&' . $agents_qs)); ?>">Export Synced SKUs (CSV)</a>
+                    <a class="button button-primary" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=wcss_export_all_skus&' . $agents_qs), 'wcss_export')); ?>">Export All SKUs (CSV)</a>
+                    <a class="button" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=wcss_export_synced_skus&' . $agents_qs), 'wcss_export')); ?>">Export Synced SKUs (CSV)</a>
                 </p>
                 <p class="description">
                     “All SKUs” groups Host + selected Agents by <code>normalized_key</code>. “Synced SKUs” includes only groups with a Host SKU and at least one Agent SKU.
@@ -815,6 +829,12 @@ final class Hashy_AU_Settings {
             wp_send_json_error(['message' => 'agent_url/secret missing'], 400);
         }
 
+        // SSRF guard: agents are public https sites; refuse other schemes and
+        // let WP reject unroutable/loopback hosts.
+        if ('https' !== wp_parse_url($agent_url, PHP_URL_SCHEME)) {
+            wp_send_json_error(['message' => 'Agent URL must use https'], 400);
+        }
+
         $endpoint = untrailingslashit($agent_url) . '/wp-json/hashy-sync/v1/host/ping';
         $payload = [
             'host_url' => untrailingslashit(home_url()),
@@ -826,6 +846,7 @@ final class Hashy_AU_Settings {
 
         $resp = wp_remote_post($endpoint, [
             'timeout' => 15,
+            'reject_unsafe_urls' => true,
             'headers' => [
                 'Content-Type' => 'application/json; charset=utf-8',
                 'x-hashy-timestamp' => $timestamp,
@@ -839,7 +860,7 @@ final class Hashy_AU_Settings {
         }
 
         $code = (int) wp_remote_retrieve_response_code($resp);
-        $resp_body = (string) wp_remote_retrieve_body($resp);
+        $resp_body = mb_substr((string) wp_remote_retrieve_body($resp), 0, 300);
 
         if ($code >= 200 && $code < 300) {
             wp_send_json_success(['code' => $code, 'body' => $resp_body]);

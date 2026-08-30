@@ -76,32 +76,33 @@ final class Hashy_AU_Host {
         $timestamp = (string) $request->get_header('x-hashy-timestamp');
         $signature = (string) $request->get_header('x-hashy-signature');
 
+        // Unauthenticated input: no logging and a uniform error until the
+        // signature verifies (log writes rewrite a wp_options ring — a flood
+        // vector — and distinct errors let an attacker enumerate agent URLs).
         $data = json_decode($raw_body, true);
-        if (!is_array($data)) {
-            Hashy_AU_Logger::instance()->warning('Host ping invalid_json');
-            return new WP_REST_Response(['ok' => false, 'error' => 'invalid_json'], 400);
-        }
+        $agent_url = is_array($data) ? untrailingslashit((string) ($data['agent_url'] ?? '')) : '';
+        $agent = ('' !== $agent_url) ? $this->find_agent_by_url($agent_url) : null;
+        $secret = is_array($agent) ? (string) ($agent['shared_secret'] ?? '') : '';
 
-        $agent_url = untrailingslashit((string) ($data['agent_url'] ?? ''));
-        if (empty($agent_url)) {
-            Hashy_AU_Logger::instance()->warning('Host ping missing agent_url');
-            return new WP_REST_Response(['ok' => false, 'error' => 'missing_agent_url'], 400);
-        }
-
-        $agent = $this->find_agent_by_url($agent_url);
-        if (!$agent) {
-            Hashy_AU_Logger::instance()->warning('Host ping unknown_agent', ['agent_url' => $agent_url]);
-            return new WP_REST_Response(['ok' => false, 'error' => 'unknown_agent'], 403);
-        }
-
-        $secret = (string) ($agent['shared_secret'] ?? '');
         if (empty($secret) || !Hashy_AU_Crypto::verify($secret, $timestamp, $raw_body, $signature)) {
-            Hashy_AU_Logger::instance()->warning('Host ping bad_signature', ['agent_url' => $agent_url]);
-            return new WP_REST_Response(['ok' => false, 'error' => 'bad_signature'], 403);
+            $this->log_auth_failure('ping');
+            return new WP_REST_Response(['ok' => false, 'error' => 'forbidden'], 403);
         }
 
         Hashy_AU_Logger::instance()->info('Host ping OK', ['agent_url' => $agent_url]);
         return new WP_REST_Response(['ok' => true], 200);
+    }
+
+    /**
+     * Throttled warning for failed REST authentication: at most one log line
+     * per 5-minute window, so unauthenticated requests can't churn the ring.
+     */
+    private function log_auth_failure(string $context): void {
+        if (get_transient('wcss_auth_fail_throttle')) {
+            return;
+        }
+        set_transient('wcss_auth_fail_throttle', 1, 5 * MINUTE_IN_SECONDS);
+        Hashy_AU_Logger::instance()->warning('Rejected unauthenticated sync request(s)', ['context' => $context]);
     }
 
 public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Response {
@@ -109,39 +110,32 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
         $timestamp = (string) $request->get_header('x-hashy-timestamp');
         $signature = (string) $request->get_header('x-hashy-signature');
 
+        // Verify before parsing details or logging anything — see rest_host_ping.
         $data = json_decode($raw_body, true);
-        if (!is_array($data)) {
-            return new WP_REST_Response(['ok' => false, 'error' => 'invalid_json'], 400);
+        $agent_url = is_array($data) ? untrailingslashit((string) ($data['agent_url'] ?? '')) : '';
+        $agent = ('' !== $agent_url) ? $this->find_agent_by_url($agent_url) : null;
+        $secret = is_array($agent) ? (string) ($agent['shared_secret'] ?? '') : '';
+
+        if (empty($secret) || !Hashy_AU_Crypto::verify($secret, $timestamp, $raw_body, $signature)) {
+            $this->log_auth_failure('order-paid');
+            return new WP_REST_Response(['ok' => false, 'error' => 'forbidden'], 403);
         }
 
-        $agent_url = untrailingslashit((string) ($data['agent_url'] ?? ''));
         $order_id = (int) ($data['order_id'] ?? 0);
         $items = isset($data['items']) && is_array($data['items']) ? $data['items'] : [];
 
-        if (empty($agent_url) || $order_id <= 0 || empty($items)) {
+        if ($order_id <= 0 || empty($items)) {
             return new WP_REST_Response(['ok' => false, 'error' => 'missing_fields'], 400);
         }
 
         Hashy_AU_Logger::instance()->info('Inbound agent order-paid received', [
             'agent_url' => $agent_url,
             'order_id' => $order_id,
-            'items_count' => is_array($items) ? count($items) : 0,
+            'items_count' => count($items),
         ]);
-
-        $agent = $this->find_agent_by_url($agent_url);
 
         $agent_host = parse_url($agent_url, PHP_URL_HOST);
         $agent_key = is_string($agent_host) ? preg_replace('/[^a-z0-9]+/', '_', strtolower($agent_host)) : '';
-        if (!$agent) {
-            Hashy_AU_Logger::instance()->warning('Unknown agent URL', ['agent_url' => $agent_url]);
-            return new WP_REST_Response(['ok' => false, 'error' => 'unknown_agent'], 403);
-        }
-
-        $secret = (string) ($agent['shared_secret'] ?? '');
-        if (empty($secret) || !Hashy_AU_Crypto::verify($secret, $timestamp, $raw_body, $signature)) {
-            Hashy_AU_Logger::instance()->warning('Bad signature on agent order-paid', ['agent_url' => $agent_url]);
-            return new WP_REST_Response(['ok' => false, 'error' => 'bad_signature'], 403);
-        }
 
         if ($this->is_order_seen($agent_url, $order_id)) {
             return new WP_REST_Response(['ok' => true, 'deduped' => true], 200);
@@ -841,7 +835,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
         $code = (int) wp_remote_retrieve_response_code($res);
         $raw = (string) wp_remote_retrieve_body($res);
         if ($code < 200 || $code >= 300) {
-            Hashy_AU_Logger::instance()->warning('Agent sku-index-detailed non-2xx', ['agent_url' => $agent_url, 'code' => $code, 'body' => $raw]);
+            Hashy_AU_Logger::instance()->warning('Agent sku-index-detailed non-2xx', ['agent_url' => $agent_url, 'code' => $code, 'body' => mb_substr($raw, 0, 500)]);
             return [];
         }
 
