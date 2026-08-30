@@ -943,6 +943,9 @@ public function ajax_send_test_order_paid(): void {
 
         Hashy_AU_Logger::instance()->info('Price sync started (admin)', ['agent_url' => (string) $agent['url']]);
         $res = Hashy_AU_Host::instance()->process_price_sync_batch_once($agent, 1);
+        if (!empty($res['error'])) {
+            wp_send_json_error(['message' => (string) $res['error']], 400);
+        }
         wp_send_json_success($res);
     }
 
@@ -969,6 +972,9 @@ public function ajax_send_test_order_paid(): void {
         }
 
         $res = Hashy_AU_Host::instance()->process_price_sync_batch_once($agent, $page);
+        if (!empty($res['error'])) {
+            wp_send_json_error(['message' => (string) $res['error']], 400);
+        }
         wp_send_json_success($res);
     }
 
@@ -994,6 +1000,9 @@ public function ajax_send_test_order_paid(): void {
 
         Hashy_AU_Logger::instance()->info('Stock sync started (admin)', ['agent_url' => (string) $agent['url']]);
         $res = Hashy_AU_Host::instance()->process_stock_sync_batch_once($agent, 1);
+        if (!empty($res['error'])) {
+            wp_send_json_error(['message' => (string) $res['error']], 400);
+        }
         wp_send_json_success($res);
     }
 
@@ -1020,6 +1029,9 @@ public function ajax_send_test_order_paid(): void {
         }
 
         $res = Hashy_AU_Host::instance()->process_stock_sync_batch_once($agent, $page);
+        if (!empty($res['error'])) {
+            wp_send_json_error(['message' => (string) $res['error']], 400);
+        }
         wp_send_json_success($res);
     }
 
