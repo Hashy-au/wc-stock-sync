@@ -3,3 +3,9 @@
 *.jpg binary
 *.gif binary
 *.zip binary
+
+# Not part of release archives
+/scripts export-ignore
+/dist export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore
