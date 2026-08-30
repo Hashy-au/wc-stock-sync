@@ -251,6 +251,23 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
         $this->push_to_all_agents($payload, false);
     }
 
+    /**
+     * Immediately push one product's current state to all agents (used by the
+     * stocktake push queue). Bypasses the per-request coalescing set but not
+     * the variation own-SKU rule.
+     */
+    public function push_product_now(int $product_id): bool {
+        $product = wc_get_product($product_id);
+        if (!$product instanceof WC_Product) {
+            return false;
+        }
+        if ($product->is_type('variation') && '' === (string) $product->get_sku('edit')) {
+            return false;
+        }
+        $this->push_to_all_agents($this->build_payload($product), false);
+        return true;
+    }
+
     public function process_price_sync_batch_once(array $agent, int $page): array {
         $agent_url = untrailingslashit((string) ($agent['url'] ?? ''));
         if (empty($agent_url)) {

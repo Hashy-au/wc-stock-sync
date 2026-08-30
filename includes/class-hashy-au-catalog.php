@@ -168,6 +168,50 @@ final class Hashy_AU_Catalog {
     }
 
     /**
+     * Rows for the stocktake export: every product/variation with its own
+     * non-empty SKU that can hold stock. Deliberately NOT get_local_sku_items():
+     * its normalized-key dedupe drops rows a stocktake must list.
+     *
+     * Shape: [ ['product_id','sku','name','stock'(int|''),'managing'(bool)], ... ]
+     */
+    public function get_stocktake_rows(): array {
+        $rows = [];
+        $sku_rows = $this->get_all_sku_rows();
+        ksort($sku_rows);
+        foreach ($sku_rows as $pid => $sku) {
+            $product = wc_get_product($pid);
+            if (!$product) {
+                continue;
+            }
+            // Variable parents don't hold stock themselves; their variations
+            // are listed individually. Variations must carry their OWN SKU.
+            if ($product->is_type('variable')) {
+                continue;
+            }
+            if ($product->is_type('variation') && '' === (string) $product->get_sku('edit')) {
+                continue;
+            }
+
+            $name = $product->get_name();
+            if ($product->is_type('variation')) {
+                $parent = $product->get_parent_id() ? wc_get_product($product->get_parent_id()) : null;
+                $attrs = wc_get_formatted_variation($product, true, false, true);
+                $name = ($parent ? $parent->get_name() : $name) . ($attrs !== '' ? ' – ' . $attrs : '');
+            }
+
+            $managing = (bool) $product->managing_stock();
+            $rows[] = [
+                'product_id' => (int) $pid,
+                'sku' => (string) $sku,
+                'name' => (string) $name,
+                'stock' => $managing ? (int) $product->get_stock_quantity() : '',
+                'managing' => $managing,
+            ];
+        }
+        return $rows;
+    }
+
+    /**
      * Neutralize spreadsheet formula injection: Excel executes cells that
      * start with = + - @ (or tab/CR). Prefix a single quote so the value is
      * treated as text.

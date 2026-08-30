@@ -705,6 +705,12 @@ final class Hashy_AU_Settings {
                     </form>
                 <?php endif; ?>
 
+                <?php
+                if (class_exists('Hashy_AU_Stocktake')) {
+                    Hashy_AU_Stocktake::instance()->render_admin_section();
+                }
+                ?>
+
             <?php endif; ?>
         </div>
         <?php
