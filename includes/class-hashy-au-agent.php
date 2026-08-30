@@ -11,6 +11,13 @@ if (!defined('ABSPATH')) {
 
 final class Hashy_AU_Agent {
 
+    /**
+     * True while an inbound host update is being applied. The agent registers
+     * no stock hooks today, but the guard keeps any future hook additions
+     * from echoing remote changes back out.
+     */
+    private static bool $applying_remote = false;
+
     private static $instance = null;
     private string $route_namespace = 'hashy-sync/v1';
 
@@ -397,32 +404,36 @@ public function rest_host_stock_update(WP_REST_Request $request): WP_REST_Respon
             return new WP_REST_Response(['ok' => false, 'error' => 'product_not_found'], 404);
         }
 
-        // Prevent loops: mark as remote sync while applying.
-        $flag_key = '_hashy_au_remote_sync';
-        $product->update_meta_data($flag_key, '1');
-        $product->save();
-
-        if (!$prices_only && !empty($data['manage_stock'])) {
-            $product->set_manage_stock(true);
-            $qty = isset($data['stock_qty']) ? (int) $data['stock_qty'] : null;
-            if (null !== $qty) {
-                wc_update_product_stock($product, $qty, 'set');
+        // Replay / out-of-order guard: within the HMAC skew window a captured
+        // request could be replayed, and concurrent pushes can arrive out of
+        // order. Only apply payloads strictly newer than the last applied one.
+        $incoming_ts = isset($data['ts']) ? (int) $data['ts'] : 0;
+        if ($incoming_ts > 0) {
+            $last_ts = (int) $product->get_meta('_wcss_last_sync_ts');
+            if ($incoming_ts <= $last_ts) {
+                return new WP_REST_Response(['ok' => true, 'stale' => true], 200);
             }
+            $product->update_meta_data('_wcss_last_sync_ts', (string) $incoming_ts);
         }
 
-        if (!$prices_only) {
-            $qty_for_status = isset($data['stock_qty']) ? (int) $data['stock_qty'] : null;
-            $incoming_status = !empty($data['stock_status']) ? (string) $data['stock_status'] : '';
+        self::$applying_remote = true;
 
-            if (null !== $qty_for_status) {
+        // stock_qty is null when the host product doesn't manage stock.
+        $qty = (isset($data['stock_qty']) && is_numeric($data['stock_qty'])) ? (int) $data['stock_qty'] : null;
+
+        if (!$prices_only) {
+            if (null !== $qty && !empty($data['manage_stock'])) {
+                $product->set_manage_stock(true);
+                wc_update_product_stock($product, $qty, 'set');
                 // Keep status consistent with quantity to avoid stale outofstock/instock flags.
-                if ($qty_for_status > 0) {
-                    $product->set_stock_status('instock');
-                } elseif ($qty_for_status <= 0) {
-                    $product->set_stock_status('outofstock');
+                $product->set_stock_status($qty > 0 ? 'instock' : 'outofstock');
+            } else {
+                // Host doesn't manage stock for this product: apply its stock
+                // status only, and leave this product's manage_stock alone.
+                $incoming_status = !empty($data['stock_status']) ? (string) $data['stock_status'] : '';
+                if ($incoming_status !== '') {
+                    $product->set_stock_status($incoming_status);
                 }
-            } elseif ($incoming_status !== '') {
-                $product->set_stock_status($incoming_status);
             }
         }
 
@@ -438,17 +449,16 @@ public function rest_host_stock_update(WP_REST_Request $request): WP_REST_Respon
 
         $product->save();
 
+        self::$applying_remote = false;
+
         Hashy_AU_Logger::instance()->info('Applied host update', [
             'sku' => $sku,
             'product_id' => $product_id,
             'prices_only' => $prices_only,
-            'stock_qty' => isset($data['stock_qty']) ? (int) $data['stock_qty'] : null,
+            'stock_qty' => $qty,
         ]);
 
-        // Clear loop flag.
-        delete_post_meta($product_id, $flag_key);
-
-        return new WP_REST_Response(['ok' => true, 'product_id' => $product_id], 200);
+        return new WP_REST_Response(['ok' => true], 200);
     }
 
     public function daily_reconcile(): void {
