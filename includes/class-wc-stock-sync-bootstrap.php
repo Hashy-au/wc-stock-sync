@@ -48,11 +48,24 @@ final class Hashy_AU_Bootstrap {
         add_action('admin_init', [$this, 'self_check_if_needed']);
         add_action('admin_notices', [$this, 'maybe_show_self_check_notice']);
 
-        register_activation_hook(HASHY_AU_PLUGIN_FILE, [$this, 'activate']);
-        register_deactivation_hook(HASHY_AU_PLUGIN_FILE, [$this, 'deactivate']);
+        $this->ensure_cron_scheduled($mode);
     }
 
-    public function activate(): void {
+    /**
+     * Self-heal cron schedules. Sites that activated under older versions never
+     * had activate() run (the hooks were registered too late), and in-place
+     * plugin updates don't fire activation hooks either.
+     */
+    private function ensure_cron_scheduled(string $mode): void {
+        if (!wp_next_scheduled('hashy_au_daily_reconcile')) {
+            wp_schedule_event(time() + 300, 'daily', 'hashy_au_daily_reconcile');
+        }
+        if ('host' === $mode && !wp_next_scheduled('wcss_retry_failed_requests')) {
+            wp_schedule_event(time() + 600, 'hourly', 'wcss_retry_failed_requests');
+        }
+    }
+
+    public static function activate(): void {
         update_option('wcss_self_check_pending', '1', false);
         if (!wp_next_scheduled('hashy_au_daily_reconcile')) {
             wp_schedule_event(time() + 300, 'daily', 'hashy_au_daily_reconcile');
@@ -62,15 +75,11 @@ final class Hashy_AU_Bootstrap {
         }
     }
 
-    public function deactivate(): void {
-        $ts = wp_next_scheduled('hashy_au_daily_reconcile');
-        if ($ts) {
-            wp_unschedule_event($ts, 'hashy_au_daily_reconcile');
-        }
-        $ts2 = wp_next_scheduled('wcss_retry_failed_requests');
-        if ($ts2) {
-            wp_unschedule_event($ts2, 'wcss_retry_failed_requests');
-        }
+    public static function deactivate(): void {
+        wp_clear_scheduled_hook('hashy_au_daily_reconcile');
+        wp_clear_scheduled_hook('wcss_retry_failed_requests');
+        wp_clear_scheduled_hook('wcss_agent_process_outbox');
+        wp_clear_scheduled_hook('wcss_drain_push_queue');
     }
 
 
