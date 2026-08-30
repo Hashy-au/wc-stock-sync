@@ -264,6 +264,13 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
         }
 
         $agent_skus = $this->get_agent_normalized_skus_cached($agent);
+        if (null === $agent_skus) {
+            return ['done' => true, 'next_page' => $page, 'processed' => 0, 'error' => 'Could not fetch the agent SKU index — aborting price sync. See Logs.'];
+        }
+        if (empty($agent_skus)) {
+            return ['done' => true, 'next_page' => $page, 'processed' => 0, 'error' => 'Agent reports no SKUs — aborting price sync.'];
+        }
+
         $per_page = 50;
         $ids = $this->get_products_with_sku_page($page, $per_page);
 
@@ -286,7 +293,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
             }
 
             $norm = Hashy_AU_SKU::normalize($sku);
-            if (!empty($agent_skus) && !isset($agent_skus[$norm])) {
+            if (!isset($agent_skus[$norm])) {
                 continue;
             }
 
@@ -317,6 +324,13 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
         }
 
         $agent_skus = $this->get_agent_normalized_skus_cached($agent);
+        if (null === $agent_skus) {
+            return ['done' => true, 'next_page' => $page, 'processed' => 0, 'error' => 'Could not fetch the agent SKU index — aborting stock sync. See Logs.'];
+        }
+        if (empty($agent_skus)) {
+            return ['done' => true, 'next_page' => $page, 'processed' => 0, 'error' => 'Agent reports no SKUs — aborting stock sync.'];
+        }
+
         $per_page = 50;
         $ids = $this->get_products_with_sku_page($page, $per_page);
 
@@ -337,7 +351,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
             }
 
             $norm = Hashy_AU_SKU::normalize($sku);
-            if (!empty($agent_skus) && !isset($agent_skus[$norm])) {
+            if (!isset($agent_skus[$norm])) {
                 continue;
             }
 
@@ -355,12 +369,12 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
         return ['done' => false, 'next_page' => $page + 1, 'processed' => $processed];
     }
 
-    public function do_push_stock_update(array $agent, array $payload): void {
+    public function do_push_stock_update(array $agent, array $payload, bool $queue_on_failure = true): bool {
         $agent_url = untrailingslashit((string) ($agent['url'] ?? ''));
         $secret = (string) ($agent['shared_secret'] ?? '');
 
         if (empty($agent_url) || empty($secret)) {
-            return;
+            return false;
         }
 
         $endpoint = $agent_url . '/wp-json/hashy-sync/v1/host/stock-update';
@@ -380,25 +394,29 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
         ]);
 
         if (is_wp_error($res)) {
-            $this->queue_failed_request('stock_update', $agent, $endpoint, $payload, $timestamp, $signature, $res->get_error_message());
+            if ($queue_on_failure) {
+                $this->queue_failed_request('stock_update', $agent, $payload, $res->get_error_message());
+            }
             Hashy_AU_Logger::instance()->error('Push update failed', [
                 'agent_url' => $agent_url,
                 'sku' => (string) ($payload['sku'] ?? ''),
                 'error' => $res->get_error_message(),
             ]);
-            return;
+            return false;
         }
 
         $code = (int) wp_remote_retrieve_response_code($res);
         if ($code < 200 || $code >= 300) {
-            $this->queue_failed_request('stock_update', $agent, $endpoint, $payload, $timestamp, $signature, 'HTTP ' . $code);
+            if ($queue_on_failure) {
+                $this->queue_failed_request('stock_update', $agent, $payload, 'HTTP ' . $code);
+            }
             Hashy_AU_Logger::instance()->warning('Push update non-2xx', [
                 'agent_url' => $agent_url,
                 'sku' => (string) ($payload['sku'] ?? ''),
                 'code' => $code,
-                'body' => wp_remote_retrieve_body($res),
+                'body' => mb_substr((string) wp_remote_retrieve_body($res), 0, 500),
             ]);
-            return;
+            return false;
         }
 
         Hashy_AU_Logger::instance()->info('Push update OK', [
@@ -406,6 +424,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
             'sku' => (string) ($payload['sku'] ?? ''),
             'code' => $code,
         ]);
+        return true;
     }
 
     public function process_failed_queue(): void {
@@ -415,6 +434,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
             return;
         }
 
+        $max_attempts = 12;
         $kept = [];
         foreach ($queue as $row) {
             if (!is_array($row)) {
@@ -425,15 +445,29 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
                 continue;
             }
 
-            $agent = isset($row['agent']) && is_array($row['agent']) ? $row['agent'] : [];
             $payload = isset($row['payload']) && is_array($row['payload']) ? $row['payload'] : [];
+            $agent = $this->resolve_queued_agent($row);
+            if (!$agent || empty($payload)) {
+                Hashy_AU_Logger::instance()->warning('Dropping queued push (agent no longer configured)', [
+                    'agent_url' => (string) ($row['agent_url'] ?? ''),
+                ]);
+                continue;
+            }
 
-            $before = count(Hashy_AU_Logger::instance()->get_logs());
-            $this->do_push_stock_update($agent, $payload);
-            $after = count(Hashy_AU_Logger::instance()->get_logs());
+            // Retry without re-queueing on failure; retention is handled here.
+            $ok = $this->do_push_stock_update($agent, $payload, false);
+            if ($ok) {
+                continue;
+            }
 
-            // If it still fails, keep it (we can't reliably detect success without duplicating request logic).
-            // We keep it and rely on 24h window.
+            $row['attempts'] = (int) ($row['attempts'] ?? 0) + 1;
+            if ($row['attempts'] >= $max_attempts) {
+                Hashy_AU_Logger::instance()->warning('Dropping queued push after max attempts', [
+                    'agent_url' => (string) ($row['agent_url'] ?? ''),
+                    'sku' => (string) ($payload['sku'] ?? ''),
+                ]);
+                continue;
+            }
             $kept[] = $row;
 
             // minor safeguard: if queue explodes, cap.
@@ -444,6 +478,28 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
         }
 
         update_option($key, $kept, false);
+    }
+
+    /**
+     * Resolve a queued row back to a live agent config (by id, then URL).
+     * Queue rows deliberately don't store the shared secret.
+     */
+    private function resolve_queued_agent(array $row): ?array {
+        $agent_id = (string) ($row['agent_id'] ?? '');
+        $agent_url = untrailingslashit((string) ($row['agent_url'] ?? ($row['agent']['url'] ?? '')));
+
+        foreach (Hashy_AU_Settings::instance()->get_host_agents() as $a) {
+            if (!is_array($a) || empty($a['shared_secret'])) {
+                continue;
+            }
+            if ('' !== $agent_id && (string) ($a['id'] ?? '') === $agent_id) {
+                return $a;
+            }
+            if ('' !== $agent_url && untrailingslashit((string) ($a['url'] ?? '')) === $agent_url) {
+                return $a;
+            }
+        }
+        return null;
     }
 
     public function daily_reconcile(): void {
@@ -652,7 +708,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
         update_option($key, $existing, false);
     }
 
-    private function queue_failed_request(string $type, array $agent, string $endpoint, array $payload, string $timestamp, string $signature, string $error): void {
+    private function queue_failed_request(string $type, array $agent, array $payload, string $error): void {
         $key = 'wcss_failed_requests';
         $queue = get_option($key, []);
         if (!is_array($queue)) {
@@ -664,24 +720,32 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
             return is_array($row) && !empty($row['created']) && ($now - (int) $row['created'] <= DAY_IN_SECONDS);
         }));
 
+        // Reference the agent by id/url only; the shared secret must not be
+        // persisted into wp_options, and retries re-sign with the live config.
         $queue[] = [
             'created' => $now,
             'type' => $type,
-            'agent' => $agent,
-            'endpoint' => $endpoint,
+            'agent_id' => (string) ($agent['id'] ?? ''),
+            'agent_url' => untrailingslashit((string) ($agent['url'] ?? '')),
             'payload' => $payload,
-            'timestamp' => $timestamp,
-            'signature' => $signature,
             'error' => $error,
+            'attempts' => 0,
         ];
 
         update_option($key, $queue, false);
     }
 
-    private function get_agent_normalized_skus_cached(array $agent): array {
+    /**
+     * Returns the agent's normalized SKU set, or null when the index could
+     * not be fetched. Callers must treat null as a hard failure — an empty
+     * set must never silently widen a filtered sync to the whole catalogue.
+     *
+     * @return array<string, true>|null
+     */
+    private function get_agent_normalized_skus_cached(array $agent): ?array {
         $agent_url = untrailingslashit((string) ($agent['url'] ?? ''));
         if ($agent_url === '') {
-            return [];
+            return null;
         }
 
         $cache_key = 'wcss_agent_skus_' . md5($agent_url);
@@ -689,17 +753,29 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
         if (is_array($cached)) {
             return $cached;
         }
+        if ('fetch_failed' === $cached) {
+            return null;
+        }
 
         $set = $this->fetch_agent_normalized_skus($agent);
+        if (null === $set) {
+            // Cache the failure briefly so a flapping agent doesn't get
+            // hammered, but recover quickly once it's back.
+            set_transient($cache_key, 'fetch_failed', 5 * MINUTE_IN_SECONDS);
+            return null;
+        }
         set_transient($cache_key, $set, HOUR_IN_SECONDS);
         return $set;
     }
 
-    private function fetch_agent_normalized_skus(array $agent): array {
+    /**
+     * @return array<string, true>|null Null on fetch/parse failure.
+     */
+    private function fetch_agent_normalized_skus(array $agent): ?array {
         $agent_url = untrailingslashit((string) ($agent['url'] ?? ''));
         $secret = (string) ($agent['shared_secret'] ?? '');
         if ($agent_url === '' || $secret === '') {
-            return [];
+            return null;
         }
 
         $endpoint = $agent_url . '/wp-json/hashy-sync/v1/host/sku-index';
@@ -724,7 +800,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
                 'agent_url' => $agent_url,
                 'error' => $res->get_error_message(),
             ]);
-            return [];
+            return null;
         }
 
         $code = (int) wp_remote_retrieve_response_code($res);
@@ -732,15 +808,15 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
             Hashy_AU_Logger::instance()->warning('Agent SKU index fetch non-2xx', [
                 'agent_url' => $agent_url,
                 'code' => $code,
-                'body' => wp_remote_retrieve_body($res),
+                'body' => mb_substr((string) wp_remote_retrieve_body($res), 0, 500),
             ]);
-            return [];
+            return null;
         }
 
         $data = json_decode((string) wp_remote_retrieve_body($res), true);
         $rows = is_array($data) ? ($data['skus'] ?? []) : [];
         if (!is_array($rows)) {
-            return [];
+            return null;
         }
 
         $set = [];

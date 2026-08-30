@@ -117,6 +117,14 @@ private function send_order_paid(int $order_id): void {
             return;
         }
 
+        // A single payment fires several of our hooks in one request
+        // (payment_complete + status_processing + status_changed); send once.
+        static $sent_this_request = [];
+        if (isset($sent_this_request[$order_id])) {
+            return;
+        }
+        $sent_this_request[$order_id] = true;
+
         $order = wc_get_order($order_id);
         if (!$order) {
             return;
@@ -194,8 +202,6 @@ private function send_order_paid(int $order_id): void {
                 'order_id' => $order_id,
                 'endpoint' => $endpoint,
                 'body' => (string) $body,
-                'timestamp' => $timestamp,
-                'signature' => $signature,
                 'attempts' => 0,
                 'created_at' => time(),
                 'next_try' => time() + 300,
@@ -216,8 +222,6 @@ private function send_order_paid(int $order_id): void {
                 'order_id' => $order_id,
                 'endpoint' => $endpoint,
                 'body' => (string) $body,
-                'timestamp' => $timestamp,
-                'signature' => $signature,
                 'attempts' => 0,
                 'created_at' => time(),
                 'next_try' => time() + 300,
@@ -511,6 +515,19 @@ public function rest_host_stock_update(WP_REST_Request $request): WP_REST_Respon
         if (!is_array($outbox)) {
             $outbox = [];
         }
+
+        // One queued row per order is enough; the host dedupes by order id too.
+        $order_id = (int) ($entry['order_id'] ?? 0);
+        if ($order_id > 0) {
+            foreach ($outbox as $existing) {
+                if (is_array($existing)
+                    && (string) ($existing['type'] ?? '') === (string) ($entry['type'] ?? '')
+                    && (int) ($existing['order_id'] ?? 0) === $order_id) {
+                    return;
+                }
+            }
+        }
+
         $outbox[] = $entry;
         update_option('wcss_agent_outbox', $outbox, false);
 
@@ -522,6 +539,14 @@ public function rest_host_stock_update(WP_REST_Request $request): WP_REST_Respon
     public function process_outbox(): void {
         $outbox = get_option('wcss_agent_outbox', []);
         if (!is_array($outbox) || empty($outbox)) {
+            return;
+        }
+
+        // Re-sign at send time with the current secret: HMAC verification
+        // rejects timestamps outside a ±300s window, so a signature stored at
+        // enqueue time is guaranteed to be invalid by the time a retry runs.
+        $secret = Hashy_AU_Settings::instance()->get_agent_shared_secret();
+        if (empty($secret)) {
             return;
         }
 
@@ -540,14 +565,15 @@ public function rest_host_stock_update(WP_REST_Request $request): WP_REST_Respon
 
             $endpoint = (string) ($entry['endpoint'] ?? '');
             $body = (string) ($entry['body'] ?? '');
-            $timestamp = (string) ($entry['timestamp'] ?? '');
-            $signature = (string) ($entry['signature'] ?? '');
             $order_id = (int) ($entry['order_id'] ?? 0);
             $attempts = (int) ($entry['attempts'] ?? 0);
 
-            if (empty($endpoint) || empty($body) || empty($timestamp) || empty($signature)) {
+            if (empty($endpoint) || empty($body)) {
                 continue;
             }
+
+            $timestamp = (string) time();
+            $signature = Hashy_AU_Crypto::sign($secret, $timestamp, $body);
 
             Hashy_AU_Logger::instance()->info('Outbox retry attempt', [
                 'order_id' => $order_id,
@@ -610,6 +636,9 @@ public function rest_host_stock_update(WP_REST_Request $request): WP_REST_Respon
                     $dead = [];
                 }
                 $dead[] = $entry;
+                if (count($dead) > 100) {
+                    $dead = array_slice($dead, -100);
+                }
                 update_option('wcss_agent_outbox_dead', $dead, false);
                 Hashy_AU_Logger::instance()->error('Outbox dropped after 24h', ['order_id' => $order_id]);
             }
