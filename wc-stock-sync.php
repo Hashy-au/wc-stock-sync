@@ -38,16 +38,23 @@ add_action('before_woocommerce_init', function () {
     }
 });
 
-// Automatic updates from the private GitHub repo. Wired at file scope (not
+// Automatic updates from the public GitHub repo. Wired at file scope (not
 // inside the WooCommerce-gated bootstrap) so update checks keep working even
-// when WooCommerce is deactivated. Requires a fine-grained GitHub token
-// (Contents: Read-only on the repo) — set it under WC Stock Sync → Settings,
-// or define WCSS_GITHUB_TOKEN in wp-config.php. With no token configured the
-// checker is not instantiated at all, so private-repo 404s never spam logs.
+// when WooCommerce is deactivated. No token is required for a public repo;
+// one may still be supplied (WCSS_GITHUB_TOKEN in wp-config.php, or the
+// settings field) to raise the GitHub API rate limit or if the repo is ever
+// made private again.
 if (!defined('WCSS_GITHUB_REPO')) {
-    define('WCSS_GITHUB_REPO', 'https://github.com/hashy-au/wc-stock-sync/');
+    define('WCSS_GITHUB_REPO', 'https://github.com/Hashy-au/wc-stock-sync/');
 }
 add_action('init', function () {
+    require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/lib/plugin-update-checker/plugin-update-checker.php';
+    $wcss_update_checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+        WCSS_GITHUB_REPO,
+        __FILE__,
+        'wc-stock-sync'
+    );
+
     if (defined('WCSS_GITHUB_TOKEN') && WCSS_GITHUB_TOKEN !== '') {
         $wcss_token = (string) WCSS_GITHUB_TOKEN;
     } else {
@@ -55,17 +62,10 @@ add_action('init', function () {
         $wcss_settings = get_option('hashy_au_settings', []);
         $wcss_token = is_array($wcss_settings) ? (string) ($wcss_settings['updates']['github_token'] ?? '') : '';
     }
-    if ('' === $wcss_token) {
-        return;
+    if ('' !== $wcss_token) {
+        $wcss_update_checker->setAuthentication($wcss_token);
     }
 
-    require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/lib/plugin-update-checker/plugin-update-checker.php';
-    $wcss_update_checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
-        WCSS_GITHUB_REPO,
-        __FILE__,
-        'wc-stock-sync'
-    );
-    $wcss_update_checker->setAuthentication($wcss_token);
     $wcss_update_checker->getVcsApi()->enableReleaseAssets('/^wc-stock-sync\.zip$/');
 });
 

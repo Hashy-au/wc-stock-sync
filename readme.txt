@@ -26,7 +26,7 @@ Features:
 * **Stocktake (xlsx)** on the Host: download a spreadsheet (Name | SKU | Stock | New Stock | Product ID), count stock into the New Stock column offline, upload it back, review the previewed changes, and batch-apply. Blank cells are skipped (partial stocktakes are safe); a typed 0 sets stock to zero. Applied changes push to all Agents automatically via a background-drained queue.
 * Manual batch stock/price sync per Agent, filtered to SKUs the Agent actually has.
 * Missing-SKU reports on both sides and an in-admin log viewer.
-* Automatic plugin updates from a private GitHub repository (see below).
+* Automatic plugin updates from the GitHub repository (see below).
 
 == Installation ==
 
@@ -40,7 +40,7 @@ Features:
 
 == Automatic updates ==
 
-The plugin updates itself from GitHub Releases of the private repo. On each site, set **GitHub Update Token** in WC Stock Sync → Settings to a fine-grained personal access token scoped to the repo with the **Contents: Read-only** permission (or define `WCSS_GITHUB_TOKEN` in `wp-config.php`). With no token set, update checks are disabled. Release zips are built with `scripts/build-release.ps1` and attached to a `vX.Y.Z` release as `wc-stock-sync.zip`.
+The plugin updates itself from GitHub Releases of the public repo (https://github.com/Hashy-au/wc-stock-sync) — no configuration needed on the sites. The **GitHub Update Token** setting is optional: supply a fine-grained token (this repo only, **Contents: Read-only**) to raise the GitHub API rate limit, or if the repo is ever made private again (`WCSS_GITHUB_TOKEN` in `wp-config.php` also works). Release zips are built with `scripts/build-release.ps1` and attached to a `vX.Y.Z` release as `wc-stock-sync.zip`.
 
 == REST endpoints ==
 
@@ -103,7 +103,7 @@ Security:
 Added:
 
 * Stocktake (xlsx) round-trip on the Host: export, count offline, upload, preview, batch-apply with automatic pushes to all Agents.
-* Automatic updates from the private GitHub repo (fine-grained token per site).
+* Automatic updates from the GitHub repo (tokenless; optional token supported).
 * Uninstall now removes all plugin options, transients, and cron events.
 
 = 0.1.0 =
