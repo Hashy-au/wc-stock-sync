@@ -152,7 +152,7 @@ final class Hashy_AU_Catalog {
                 if ($parent) {
                     $product_name = $parent->get_name();
                 }
-                $variation_name = wc_get_formatted_variation($product, true, false, true);
+                $variation_name = ($product instanceof WC_Product_Variation) ? wc_get_formatted_variation($product, true, false, true) : '';
             }
 
             $items[] = [
@@ -195,8 +195,8 @@ final class Hashy_AU_Catalog {
             $name = $product->get_name();
             if ($product->is_type('variation')) {
                 $parent = $product->get_parent_id() ? wc_get_product($product->get_parent_id()) : null;
-                $attrs = wc_get_formatted_variation($product, true, false, true);
-                $name = ($parent ? $parent->get_name() : $name) . ($attrs !== '' ? ' – ' . $attrs : '');
+                $attrs = ($product instanceof WC_Product_Variation) ? wc_get_formatted_variation($product, true, false, true) : '';
+                $name = ($parent ? $parent->get_name() : $name) . ($attrs !== '' ? ' - ' . $attrs : '');
             }
 
             $managing = (bool) $product->managing_stock();

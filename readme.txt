@@ -2,26 +2,26 @@
 Contributors: hashy-au
 Tags: woocommerce, inventory, stock, sync, stocktake
 Requires at least: 6.0
-Tested up to: 6.8
+Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.5.0
+Stable tag: 0.5.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Host + Agent WooCommerce stock/price sync. Keep stock centralized on one primary store and mirrored to any number of storefronts.
+Host and Agent stock sync for WooCommerce: keep stock on one primary store and mirror stock, status and prices to any number of storefronts.
 
 == Description ==
 
 WC Stock Sync runs in one of two modes:
 
-* **Host (primary)** — the stock hub. Receives paid-order notifications from Agents, decrements matching SKUs, and pushes stock/status/price updates out to every Agent.
-* **Agent (secondary)** — a storefront. Notifies the Host when an order is paid and applies stock updates pushed from the Host.
+* **Host (primary)**: the stock hub. Receives paid-order notifications from Agents, decrements matching SKUs, and pushes stock/status/price updates out to every Agent.
+* **Agent (secondary)**: a storefront. Notifies the Host when an order is paid and applies stock updates pushed from the Host.
 
 Features:
 
-* Automatic propagation of stock **quantity** changes and stock **status-only** changes (e.g. a non-stock-managed product toggled out of stock). Any code path that uses the WooCommerce stock APIs — admin edits, the wc/v3 REST API, order reductions, `wc_update_product_stock()` — is picked up.
+* Automatic propagation of stock **quantity** changes and stock **status-only** changes (e.g. a non-stock-managed product toggled out of stock). Any code path that uses the WooCommerce stock APIs (admin edits, the wc/v3 REST API, order reductions, `wc_update_product_stock()`) is picked up.
 * Signed REST messaging (HMAC SHA256 over `<timestamp>.<raw_body>`, ±300s skew window, per-product replay guard on Agents).
-* Retry queues on both sides: the Agent outbox re-signs and retries failed order notifications; the Host retries failed pushes hourly (max 12 attempts / 24h) via the existing agent config — secrets are never persisted into queue rows.
+* Retry queues on both sides: the Agent outbox re-signs and retries failed order notifications; the Host retries failed pushes hourly (max 12 attempts / 24h) via the existing agent config; secrets are never persisted into queue rows.
 * SKU normalization for matching prefixed SKUs like `PRM-XXXX` / `ABA-XXXX` across stores (any leading 3-character alphanumeric prefix plus separator is stripped, all separators removed, uppercased), with per-agent mapping overrides and a CSV import/export workflow for maintaining them.
 * **Stocktake (xlsx)** on the Host: download a spreadsheet (Name | SKU | Stock | New Stock | Product ID), count stock into the New Stock column offline, upload it back, review the previewed changes, and batch-apply. Blank cells are skipped (partial stocktakes are safe); a typed 0 sets stock to zero. Applied changes push to all Agents automatically via a background-drained queue.
 * Manual batch stock/price sync per Agent, filtered to SKUs the Agent actually has.
@@ -40,7 +40,7 @@ Features:
 
 == Automatic updates ==
 
-The plugin updates itself from GitHub Releases of the public repo (https://github.com/Hashy-au/wc-stock-sync) — no configuration needed on the sites. The **GitHub Update Token** setting is optional: supply a fine-grained token (this repo only, **Contents: Read-only**) to raise the GitHub API rate limit, or if the repo is ever made private again (`WCSS_GITHUB_TOKEN` in `wp-config.php` also works). Release zips are built with `scripts/build-release.ps1` and attached to a `vX.Y.Z` release as `wc-stock-sync.zip`.
+The plugin updates itself from GitHub Releases of the public repo (https://github.com/Hashy-au/wc-stock-sync); no configuration is needed on the sites. The **GitHub Update Token** setting is optional: supply a fine-grained token (this repo only, **Contents: Read-only**) to raise the GitHub API rate limit, or if the repo is ever made private again (`WCSS_GITHUB_TOKEN` in `wp-config.php` also works). Release zips are built with `scripts/build-release.ps1` and attached to a `vX.Y.Z` release as `wc-stock-sync.zip`.
 
 == REST endpoints ==
 
@@ -48,15 +48,20 @@ All endpoints are POST, signed with `X-Hashy-Timestamp` / `X-Hashy-Signature` he
 
 Host side:
 
-* `/wp-json/hashy-sync/v1/agent/order-paid` — Agent reports a paid order; Host decrements stock and fans updates out to all Agents. Deduplicated by order ID per Agent.
-* `/wp-json/hashy-sync/v1/host/ping` — connectivity test.
+* `/wp-json/hashy-sync/v1/agent/order-paid`: Agent reports a paid order; Host decrements stock and fans updates out to all Agents. Deduplicated by order ID per Agent.
+* `/wp-json/hashy-sync/v1/host/ping`: connectivity test.
 
 Agent side:
 
-* `/wp-json/hashy-sync/v1/host/ping` — connectivity test.
-* `/wp-json/hashy-sync/v1/host/stock-update` — Host pushes stock/status/price for one SKU. Stale/replayed payloads (by `ts`) are acknowledged but not applied.
-* `/wp-json/hashy-sync/v1/host/sku-index` — normalized SKU set, used to filter batch syncs.
-* `/wp-json/hashy-sync/v1/host/sku-index-detailed` — SKU list with names, used by the Import/Export mapping tools.
+* `/wp-json/hashy-sync/v1/host/ping`: connectivity test.
+* `/wp-json/hashy-sync/v1/host/stock-update`: Host pushes stock/status/price for one SKU. Stale/replayed payloads (by `ts`) are acknowledged but not applied.
+* `/wp-json/hashy-sync/v1/host/sku-index`: normalized SKU set, used to filter batch syncs.
+* `/wp-json/hashy-sync/v1/host/sku-index-detailed`: SKU list with names, used by the Import/Export mapping tools.
+
+== Bundled libraries ==
+
+* SimpleXLSX and SimpleXLSXGen by Sergey Shuchkin (MIT licence), in `includes/lib/`, read and write the stocktake spreadsheets. Licence text: `includes/lib/SimpleXLSX-LICENSE.txt`.
+* Plugin Update Checker 5.6 by Yahnis Elsts (MIT licence), in `includes/lib/plugin-update-checker/`, serves the GitHub updates described above. Licence text: `includes/lib/plugin-update-checker/license.txt`.
 
 == Frequently Asked Questions ==
 
@@ -74,6 +79,25 @@ A multiplier: 125 sends prices at +25%, 90 at −10%, 0 or empty leaves prices u
 
 == Changelog ==
 
+= 0.5.1 =
+
+Fixed:
+
+* The Host's seen-orders list collapsed to a single entry once it passed 5,000 orders, so a re-sent order-paid notification could decrement stock a second time. The trim now keeps the newest 4,000 entries with their keys, and a unit test covers it.
+* The plugin boots on `init` instead of `plugins_loaded`, which removes the WordPress notice about WooCommerce translations being loaded too early.
+
+Security:
+
+* Shared secrets and the GitHub token moved out of the autoloaded settings option into their own option, which is not autoloaded and is encrypted at rest with libsodium where PHP provides it. Existing values move across automatically the first time the plugin loads after updating; nothing needs re-entering.
+* The SKU mapping CSV import now applies the same upload checks as the stocktake upload: a completed real upload, a 5 MB cap, and a `.csv` name or `text/csv` type.
+* Admin redirects after the CSV import use `wp_safe_redirect()`.
+
+Housekeeping:
+
+* Licence headers and a LICENSE file (GPLv2 or later), `Requires Plugins: woocommerce`, tested up to WordPress 7.1 and WooCommerce 11.1.
+* MIT licence text for the bundled SimpleXLSX and SimpleXLSXGen libraries, listed under Bundled libraries above.
+* Em and en dashes removed from all shipped text.
+
 = 0.5.0 =
 
 Fixed:
@@ -86,7 +110,7 @@ Fixed:
 * `sku-index-detailed` endpoint was registered but not implemented (500), leaving the synced-SKU export silently empty.
 * Export Local SKUs fataled on the first data row.
 * The Missing SKUs page read a key the Host never wrote; Host-side reports were invisible.
-* Normalized-SKU lookups scanned an arbitrary window of 50–200 products; now a cached full-catalogue map (deterministic, lowest ID wins on collision).
+* Normalized-SKU lookups scanned an arbitrary window of 50 to 200 products; now a cached full-catalogue map (deterministic, lowest ID wins on collision).
 * Lowercase Agent Codes were erased by the sanitizer.
 * Variations without their own SKU no longer push the parent's SKU.
 * A mid-request failure while applying an order can no longer double-decrement on retry.

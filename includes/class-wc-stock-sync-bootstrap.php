@@ -26,6 +26,7 @@ final class Hashy_AU_Bootstrap {
             return;
         }
 
+        require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-secrets.php';
         require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-settings.php';
         require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-crypto.php';
         require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-logger.php';

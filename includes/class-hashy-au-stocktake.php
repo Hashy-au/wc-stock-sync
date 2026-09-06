@@ -69,7 +69,7 @@ final class Hashy_AU_Stocktake {
             ];
         }
 
-        $host = (string) parse_url(home_url(), PHP_URL_HOST);
+        $host = (string) wp_parse_url(home_url(), PHP_URL_HOST);
         $host = preg_replace('/[^a-z0-9.\-]/', '', strtolower($host));
         $filename = 'wcss-stocktake-' . $host . '-' . gmdate('Ymd-His') . '.xlsx';
 
@@ -89,7 +89,7 @@ final class Hashy_AU_Stocktake {
             wp_die('Host mode only', 400);
         }
 
-        $file = $_FILES['wcss_xlsx'] ?? null;
+        $file = $_FILES['wcss_xlsx'] ?? null; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- each field is checked or sanitised below.
         if (!is_array($file) || UPLOAD_ERR_OK !== (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE)
             || empty($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
             $this->redirect_with('wcss_msg', 'stocktake_missing_file');
@@ -463,7 +463,7 @@ final class Hashy_AU_Stocktake {
 
             <?php if (!empty($warnings)) : ?>
                 <details <?php echo empty($changes) ? 'open' : ''; ?>>
-                    <summary><strong>Warnings (<?php echo (int) count($warnings); ?>)</strong> — these rows will NOT be applied</summary>
+                    <summary><strong>Warnings (<?php echo (int) count($warnings); ?>)</strong>: these rows will NOT be applied</summary>
                     <table class="widefat striped" style="max-width:900px; margin-top:8px;">
                         <thead><tr><th>Row</th><th>SKU</th><th>Problem</th><th>Detail</th></tr></thead>
                         <tbody>
@@ -534,7 +534,7 @@ final class Hashy_AU_Stocktake {
                                 progress.textContent = 'Applying ' + data.cursor + '/' + data.total + '…';
                             }
                             const errs = (data.errors || []).length;
-                            progress.textContent = 'Applied ' + data.applied + ' change(s)' + (errs ? ', ' + errs + ' error(s) — see Logs' : '') + '. Pushing to agents…';
+                            progress.textContent = 'Applied ' + data.applied + ' change(s)' + (errs ? ', ' + errs + ' error(s), see Logs' : '') + '. Pushing to agents…';
                             let push = {done: false};
                             while (!push.done) {
                                 push = await post('wcss_stocktake_push_batch');

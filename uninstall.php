@@ -12,6 +12,7 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 // Options.
 $wcss_options = [
     'hashy_au_settings',
+    'hashy_au_secrets',
     'hashy_au_mappings',
     'hashy_au_processed_events',
     'hashy_au_missing_skus',

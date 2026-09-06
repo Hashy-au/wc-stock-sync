@@ -60,12 +60,22 @@ final class Hashy_AU_Host {
         register_rest_route($this->route_namespace, '/agent/order-paid', [
             'methods' => 'POST',
             'callback' => [$this, 'rest_agent_order_paid'],
+            // Public by design: these calls carry no WordPress user. The
+            // callback authenticates the request itself with
+            // Hashy_AU_Crypto::verify() (HMAC-SHA256 over timestamp.body with
+            // the per-agent shared secret) before doing any work, and answers
+            // a uniform 403 on failure.
             'permission_callback' => '__return_true',
         ]);
 
         register_rest_route($this->route_namespace, '/host/ping', [
             'methods' => 'POST',
             'callback' => [$this, 'rest_host_ping'],
+            // Public by design: these calls carry no WordPress user. The
+            // callback authenticates the request itself with
+            // Hashy_AU_Crypto::verify() (HMAC-SHA256 over timestamp.body with
+            // the per-agent shared secret) before doing any work, and answers
+            // a uniform 403 on failure.
             'permission_callback' => '__return_true',
         ]);
     }
@@ -77,8 +87,8 @@ final class Hashy_AU_Host {
         $signature = (string) $request->get_header('x-hashy-signature');
 
         // Unauthenticated input: no logging and a uniform error until the
-        // signature verifies (log writes rewrite a wp_options ring — a flood
-        // vector — and distinct errors let an attacker enumerate agent URLs).
+        // signature verifies (log writes rewrite a wp_options ring, a flood
+        // vector, and distinct errors let an attacker enumerate agent URLs).
         $data = json_decode($raw_body, true);
         $agent_url = is_array($data) ? untrailingslashit((string) ($data['agent_url'] ?? '')) : '';
         $agent = ('' !== $agent_url) ? $this->find_agent_by_url($agent_url) : null;
@@ -110,7 +120,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
         $timestamp = (string) $request->get_header('x-hashy-timestamp');
         $signature = (string) $request->get_header('x-hashy-signature');
 
-        // Verify before parsing details or logging anything — see rest_host_ping.
+        // Verify before parsing details or logging anything; see rest_host_ping.
         $data = json_decode($raw_body, true);
         $agent_url = is_array($data) ? untrailingslashit((string) ($data['agent_url'] ?? '')) : '';
         $agent = ('' !== $agent_url) ? $this->find_agent_by_url($agent_url) : null;
@@ -134,7 +144,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
             'items_count' => count($items),
         ]);
 
-        $agent_host = parse_url($agent_url, PHP_URL_HOST);
+        $agent_host = wp_parse_url($agent_url, PHP_URL_HOST);
         $agent_key = is_string($agent_host) ? preg_replace('/[^a-z0-9]+/', '_', strtolower($agent_host)) : '';
 
         if ($this->is_order_seen($agent_url, $order_id)) {
@@ -181,7 +191,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
         self::suppress_pushes(false);
 
         // Push updated stock to ALL agents for all touched SKUs.
-        $touched_ids = array_values(array_unique(array_filter($touched_ids)));
+        $touched_ids = array_values(array_unique($touched_ids));
         foreach ($touched_ids as $pid) {
             $p = wc_get_product($pid);
             if (!$p) {
@@ -276,10 +286,10 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
 
         $agent_skus = $this->get_agent_normalized_skus_cached($agent);
         if (null === $agent_skus) {
-            return ['done' => true, 'next_page' => $page, 'processed' => 0, 'error' => 'Could not fetch the agent SKU index — aborting price sync. See Logs.'];
+            return ['done' => true, 'next_page' => $page, 'processed' => 0, 'error' => 'Could not fetch the agent SKU index: abortingprice sync. See Logs.'];
         }
         if (empty($agent_skus)) {
-            return ['done' => true, 'next_page' => $page, 'processed' => 0, 'error' => 'Agent reports no SKUs — aborting price sync.'];
+            return ['done' => true, 'next_page' => $page, 'processed' => 0, 'error' => 'Agent reports no SKUs: abortingprice sync.'];
         }
 
         $per_page = 50;
@@ -336,10 +346,10 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
 
         $agent_skus = $this->get_agent_normalized_skus_cached($agent);
         if (null === $agent_skus) {
-            return ['done' => true, 'next_page' => $page, 'processed' => 0, 'error' => 'Could not fetch the agent SKU index — aborting stock sync. See Logs.'];
+            return ['done' => true, 'next_page' => $page, 'processed' => 0, 'error' => 'Could not fetch the agent SKU index: abortingstock sync. See Logs.'];
         }
         if (empty($agent_skus)) {
-            return ['done' => true, 'next_page' => $page, 'processed' => 0, 'error' => 'Agent reports no SKUs — aborting stock sync.'];
+            return ['done' => true, 'next_page' => $page, 'processed' => 0, 'error' => 'Agent reports no SKUs: abortingstock sync.'];
         }
 
         $per_page = 50;
@@ -665,14 +675,34 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
             $seen = [];
         }
         $seen[$agent_url . ':' . $order_id] = time();
-
-        if (count($seen) > 5000) {
-            // Trim oldest.
-            asort($seen);
-            $seen = array_slice($seen, -4000, true);
-        }
+        $seen = self::trim_seen_orders($seen);
 
         update_option($key, $seen, false);
+    }
+
+    /**
+     * Keep the seen-orders map bounded: once it holds more than $max entries,
+     * keep only the $keep most recently seen, with their keys.
+     *
+     * Before 0.5.1 this was array_slice($seen, -4000, true), which PHP reads
+     * as length 1: after 5,000 orders the map collapsed to a single entry (the
+     * 1,002nd oldest), every other order, including the newest, stopped being
+     * recognised, and a re-sent order-paid decremented stock a second time.
+     *
+     * Static and free of WordPress calls so tests/test-seen-orders-trim.php can
+     * run it from the command line.
+     *
+     * @param array<string, int> $seen "agent_url:order_id" => unix time first seen.
+     * @param int                $max  Trim only once the map is larger than this.
+     * @param int                $keep How many of the newest entries survive a trim.
+     * @return array<string, int>
+     */
+    public static function trim_seen_orders(array $seen, int $max = 5000, int $keep = 4000): array {
+        if (count($seen) <= $max) {
+            return $seen;
+        }
+        asort($seen);
+        return array_slice($seen, -$keep, null, true);
     }
 
     private function record_missing_host_sku(string $agent_url, string $sku): void {
@@ -717,7 +747,7 @@ public function rest_agent_order_paid(WP_REST_Request $request): WP_REST_Respons
 
     /**
      * Returns the agent's normalized SKU set, or null when the index could
-     * not be fetched. Callers must treat null as a hard failure — an empty
+     * not be fetched. Callers must treat null as a hard failure; an empty
      * set must never silently widen a filtered sync to the whole catalogue.
      *
      * @return array<string, true>|null

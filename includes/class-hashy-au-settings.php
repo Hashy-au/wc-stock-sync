@@ -60,20 +60,36 @@ final class Hashy_AU_Settings {
             ],
         ];
 
+        // Secrets are no longer stored in this option. They live in the
+        // non-autoloaded hashy_au_secrets option (Hashy_AU_Secrets), whose first
+        // read after an upgrade also moves any values still sitting here out,
+        // including the pre-0.5.0 field names (shared_secret at the top level,
+        // agent.host_shared_secret). Read it first so $saved is the moved copy.
+        $secrets = Hashy_AU_Secrets::all();
+
         $saved = get_option($this->option_name, []);
         if (!is_array($saved)) {
             $saved = [];
         }
 
-        // Back-compat from earlier fields.
-        if (!empty($saved['shared_secret']) && empty($saved['agent']['shared_secret'])) {
-            $saved['agent']['shared_secret'] = (string) $saved['shared_secret'];
-        }
-        if (!empty($saved['agent']['host_shared_secret']) && empty($saved['agent']['shared_secret'])) {
-            $saved['agent']['shared_secret'] = (string) $saved['agent']['host_shared_secret'];
+        $all = array_replace_recursive($defaults, $saved);
+
+        // Overlay the secrets so every getter and the settings form keep the
+        // shape they had; sanitize_settings() strips them again before this
+        // option is written.
+        $all['agent']['shared_secret'] = $secrets['agent_secret'];
+        $all['updates']['github_token'] = $secrets['github_token'];
+        if (is_array($all['host']['agents'])) {
+            foreach ($all['host']['agents'] as $i => $agent) {
+                if (!is_array($agent)) {
+                    continue;
+                }
+                $id = (string) ($agent['id'] ?? '');
+                $all['host']['agents'][$i]['shared_secret'] = (string) ($secrets['agents'][$id] ?? '');
+            }
         }
 
-        return array_replace_recursive($defaults, $saved);
+        return $all;
     }
 
     public function get_mode(): string {
@@ -126,9 +142,23 @@ final class Hashy_AU_Settings {
         register_setting('wcss_settings', $this->option_name, [$this, 'sanitize_settings']);
     }
 
+    /**
+     * Settings API sanitiser for hashy_au_settings.
+     *
+     * Secret fields (the Agent's shared secret, the GitHub token and each Host
+     * agent row's shared secret) are routed to Hashy_AU_Secrets and stripped
+     * from the returned array, so this option never carries them again. A
+     * secret field that is present in $input is taken as the new value (an
+     * empty string clears it); a field that is absent keeps what the store
+     * has. The absent case matters: the Settings API sanitises twice on the
+     * first save, and the one-time migration in Hashy_AU_Secrets re-saves this
+     * option with the secret keys removed.
+     */
     public function sanitize_settings($input): array {
         $input = is_array($input) ? $input : [];
         $out = $this->get_all();
+        $secrets = Hashy_AU_Secrets::all();
+        $secrets_before = $secrets;
 
         $out['mode'] = isset($input['mode']) ? sanitize_key((string) $input['mode']) : $out['mode'];
         $out['mode'] = in_array($out['mode'], ['host', 'agent'], true) ? $out['mode'] : 'agent';
@@ -138,16 +168,19 @@ final class Hashy_AU_Settings {
         if (isset($input['agent']) && is_array($input['agent'])) {
             $out['agent']['host_url'] = esc_url_raw((string) ($input['agent']['host_url'] ?? ''));
             $out['agent']['agent_code'] = preg_replace('/[^A-Z0-9]/', '', strtoupper((string) ($input['agent']['agent_code'] ?? '')));
-            $out['agent']['shared_secret'] = sanitize_text_field((string) ($input['agent']['shared_secret'] ?? ''));
+            if (array_key_exists('shared_secret', $input['agent'])) {
+                $secrets['agent_secret'] = sanitize_text_field((string) $input['agent']['shared_secret']);
+            }
         }
 
-        if (isset($input['updates']) && is_array($input['updates'])) {
-            $out['updates']['github_token'] = sanitize_text_field((string) ($input['updates']['github_token'] ?? ''));
+        if (isset($input['updates']) && is_array($input['updates']) && array_key_exists('github_token', $input['updates'])) {
+            $secrets['github_token'] = sanitize_text_field((string) $input['updates']['github_token']);
         }
 
         if (isset($input['host']) && is_array($input['host'])) {
             $agents = $input['host']['agents'] ?? [];
             $clean_agents = [];
+            $agent_secrets = [];
 
             if (is_array($agents)) {
                 foreach ($agents as $agent) {
@@ -163,17 +196,20 @@ final class Hashy_AU_Settings {
                         $id = md5(untrailingslashit($url));
                     }
 
-                    $secret = sanitize_text_field((string) ($agent['shared_secret'] ?? ''));
-                    if (empty($secret)) {
+                    if (array_key_exists('shared_secret', $agent)) {
                         // Host should generate this, but keep validation permissive.
-                        $secret = '';
+                        $secret = sanitize_text_field((string) $agent['shared_secret']);
+                    } else {
+                        $secret = (string) ($secrets['agents'][$id] ?? '');
+                    }
+                    if ('' !== $secret) {
+                        $agent_secrets[$id] = $secret;
                     }
 
                     $clean_agents[] = [
                         'id' => $id,
                         'name' => sanitize_text_field((string) ($agent['name'] ?? 'Agent')),
                         'url' => untrailingslashit($url),
-                        'shared_secret' => $secret,
                         'price_pct' => is_numeric($agent['price_pct'] ?? null) ? (float) $agent['price_pct'] : 0.0,
                         'sync_prices' => (!empty($agent['sync_prices']) && 'yes' === (string) $agent['sync_prices']) ? 'yes' : 'no',
                     ];
@@ -181,9 +217,36 @@ final class Hashy_AU_Settings {
             }
 
             $out['host']['agents'] = $clean_agents;
+            $secrets['agents'] = $agent_secrets;
         }
 
-        return $out;
+        if ($secrets !== $secrets_before) {
+            Hashy_AU_Secrets::save($secrets);
+        }
+
+        return self::strip_secrets($out);
+    }
+
+    /**
+     * Remove every secret-bearing key (current and pre-0.5.0 names) from a
+     * settings array before it is written to the autoloaded option.
+     */
+    private static function strip_secrets(array $settings): array {
+        unset($settings['shared_secret']);
+        if (isset($settings['agent']) && is_array($settings['agent'])) {
+            unset($settings['agent']['shared_secret'], $settings['agent']['host_shared_secret']);
+        }
+        if (isset($settings['updates']) && is_array($settings['updates'])) {
+            unset($settings['updates']['github_token']);
+        }
+        if (isset($settings['host']['agents']) && is_array($settings['host']['agents'])) {
+            foreach ($settings['host']['agents'] as $i => $agent) {
+                if (is_array($agent)) {
+                    unset($settings['host']['agents'][$i]['shared_secret']);
+                }
+            }
+        }
+        return $settings;
     }
 
     public function render_settings_page(): void {
@@ -204,7 +267,7 @@ final class Hashy_AU_Settings {
 
         ?>
         <div class="wrap">
-            <h1>WC Stock Sync — Settings</h1>
+            <h1>WC Stock Sync: Settings</h1>
 
             <form method="post" action="options.php">
                 <?php settings_fields('wcss_settings'); ?>
@@ -557,7 +620,7 @@ final class Hashy_AU_Settings {
         $agent_keys = [];
         foreach ($agents as $a) {
             $url = (string) ($a['url'] ?? '');
-            $host = parse_url($url, PHP_URL_HOST);
+            $host = wp_parse_url($url, PHP_URL_HOST);
             if (!is_string($host) || $host === '') {
                 continue;
             }
@@ -571,8 +634,9 @@ final class Hashy_AU_Settings {
         $draft = get_transient('wcss_import_draft_' . get_current_user_id());
         $has_draft = is_array($draft) && !empty($draft['changes']);
 
-        $msg = sanitize_key((string) ($_GET['wcss_msg'] ?? ''));
-        $show_draft = ('1' === (string) ($_GET['wcss_draft'] ?? '')) && $has_draft;
+        // Read-only page state (which notice to show, whether to open the draft); nothing acts on it, so no nonce.
+        $msg = sanitize_key((string) wp_unslash($_GET['wcss_msg'] ?? '')); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        $show_draft = ('1' === sanitize_key((string) wp_unslash($_GET['wcss_draft'] ?? ''))) && $has_draft; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
         $agents_query = [];
         foreach (array_keys($agent_keys) as $k) {
@@ -582,7 +646,7 @@ final class Hashy_AU_Settings {
 
         ?>
         <div class="wrap">
-            <h1>WC Stock Sync — Import/Export</h1>
+            <h1>WC Stock Sync: Import/Export</h1>
 
             <?php if ('host' !== $mode) : ?>
                 <div class="notice notice-warning" style="padding:12px;">
@@ -596,6 +660,10 @@ final class Hashy_AU_Settings {
                     <div class="notice notice-success"><p>Import applied successfully.</p></div>
                 <?php elseif ($msg === 'no_draft') : ?>
                     <div class="notice notice-warning"><p>No draft import found. Please upload a CSV first.</p></div>
+                <?php elseif ($msg === 'csv_too_large') : ?>
+                    <div class="notice notice-error"><p>That CSV is larger than 5 MB. Split it and import it in parts.</p></div>
+                <?php elseif ($msg === 'invalid_csv') : ?>
+                    <div class="notice notice-error"><p>That upload is not a usable CSV: it needs a .csv name (or text/csv type), a header row and at least one data row.</p></div>
                 <?php elseif ($msg !== '') : ?>
                     <div class="notice notice-warning"><p>Operation message: <?php echo esc_html($msg); ?></p></div>
                 <?php endif; ?>
@@ -610,7 +678,7 @@ final class Hashy_AU_Settings {
                         <tbody>
                         <?php foreach ($agent_keys as $k => $info) :
                             $checked = isset($_GET['agents']) ? in_array($k, (array) $_GET['agents'], true) : true;
-                            $domain = parse_url((string) $info['url'], PHP_URL_HOST);
+                            $domain = wp_parse_url((string) $info['url'], PHP_URL_HOST);
                             ?>
                             <tr>
                                 <td><input type="checkbox" name="agents[]" value="<?php echo esc_attr($k); ?>" <?php checked(true, $checked); ?> /></td>
@@ -626,8 +694,9 @@ final class Hashy_AU_Settings {
                 </form>
 
                 <?php
-                $selected_agents = isset($_GET['agents']) ? (array) $_GET['agents'] : array_keys($agent_keys);
-                $selected_agents = array_filter(array_map('sanitize_key', $selected_agents));
+                // Read-only filter that pre-ticks the export checkboxes; the export handlers verify their own nonce.
+                $selected_agents = isset($_GET['agents']) ? array_map('sanitize_key', (array) wp_unslash($_GET['agents'])) : array_keys($agent_keys); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+                $selected_agents = array_filter($selected_agents);
                 $agents_query = [];
                 foreach ($selected_agents as $k) {
                     $agents_query[] = 'agents[]=' . rawurlencode($k);
@@ -662,7 +731,7 @@ final class Hashy_AU_Settings {
                     <?php
                     $changes = is_array($draft['changes'] ?? null) ? $draft['changes'] : [];
                     $warnings = is_array($draft['warnings'] ?? null) ? $draft['warnings'] : [];
-                    $only_warnings = ('1' === (string) ($_GET['wcss_only_warnings'] ?? '0'));
+                    $only_warnings = ('1' === sanitize_key((string) wp_unslash($_GET['wcss_only_warnings'] ?? '0'))); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only view toggle.
                     ?>
                     <h3 style="margin-top:18px;">Draft preview</h3>
                     <p class="description">Review changes before applying. Use the filter to show only warnings/conflicts.</p>
@@ -752,7 +821,7 @@ final class Hashy_AU_Settings {
 
         ?>
         <div class="wrap">
-            <h1>WC Stock Sync — Missing SKUs</h1>
+            <h1>WC Stock Sync: Missing SKUs</h1>
 
             <h2>Host missing (reported by Agents)</h2>
             <p class="description">Incoming order items that could not be matched to a Host SKU/product.</p>
@@ -775,7 +844,7 @@ final class Hashy_AU_Settings {
 
         ?>
         <div class="wrap">
-            <h1>WC Stock Sync — Logs</h1>
+            <h1>WC Stock Sync: Logs</h1>
 
             <p>
                 <a href="#" class="button" id="wcss_clear_logs">Clear logs</a>
@@ -844,7 +913,7 @@ final class Hashy_AU_Settings {
         }
 
         $agent_url = isset($_POST['agent_url']) ? esc_url_raw((string) wp_unslash($_POST['agent_url'])) : '';
-        $secret = isset($_POST['agent_secret']) ? (string) wp_unslash($_POST['agent_secret']) : '';
+        $secret = isset($_POST['agent_secret']) ? sanitize_text_field((string) wp_unslash($_POST['agent_secret'])) : '';
 
         if (empty($agent_url) || empty($secret)) {
             wp_send_json_error(['message' => 'agent_url/secret missing'], 400);
