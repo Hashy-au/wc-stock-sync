@@ -13,7 +13,7 @@ final class Hashy_AU_Logger {
 
 	private static $instance    = null;
 	private $logger             = null;
-	private string $source      = 'wc-stock-sync';
+	private string $source      = 'hashy-stock-sync';
 	private string $ring_option = 'wcss_log_ring';
 	private int $ring_max       = 1000;
 
@@ -62,7 +62,7 @@ final class Hashy_AU_Logger {
 		if ( $this->logger ) {
 			$this->logger->log( $level, $message, $ctx );
 		} elseif ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			error_log( '[wc-stock-sync][' . $level . '] ' . $message . ' ' . wp_json_encode( $ctx ) );
+			error_log( '[hashy-stock-sync][' . $level . '] ' . $message . ' ' . wp_json_encode( $ctx ) );
 		}
 
 		// Admin-visible ring buffer (always)

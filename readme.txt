@@ -1,10 +1,10 @@
-=== WC Stock Sync ===
+=== Hashy Stock Sync ===
 Contributors: hashy-au
 Tags: woocommerce, inventory, stock, sync, stocktake
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.5.1
+Stable tag: 0.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,7 +12,7 @@ Host and Agent stock sync for WooCommerce: keep stock on one primary store and m
 
 == Description ==
 
-WC Stock Sync runs in one of two modes:
+Hashy Stock Sync runs in one of two modes:
 
 * **Host (primary)**: the stock hub. Receives paid-order notifications from Agents, decrements matching SKUs, and pushes stock/status/price updates out to every Agent.
 * **Agent (secondary)**: a storefront. Notifies the Host when an order is paid and applies stock updates pushed from the Host.
@@ -31,16 +31,22 @@ Features:
 == Installation ==
 
 1. Upload the plugin zip via **Plugins → Add New → Upload Plugin** and activate it.
-2. Go to the top-level **WC Stock Sync** admin menu.
+2. Go to the top-level **Hashy Stock Sync** admin menu.
 3. Set **Mode**: Host on the primary store, Agent on each secondary store.
 4. Configure the shared secret:
    * On the Host, add each Agent row (name, URL) and generate a secret per Agent.
    * On each Agent, set the Host URL and paste that same secret. One secret per Agent is used in both directions.
 5. Use **Test Host** / **Test Agent** buttons to verify connectivity.
 
+== Renamed from WC Stock Sync ==
+
+Up to 0.5.1 this plugin was called WC Stock Sync (slug `wc-stock-sync`). The WordPress.org directory does not accept "WC" in a plugin slug or name, so 0.6.0 renamed it to Hashy Stock Sync (slug `hashy-stock-sync`). Nothing else changed: option names, secrets, SKU mappings, retry queues, the log, the REST namespace (`hashy-sync/v1`) and the signing scheme are identical, so a Host on either name keeps talking to Agents on either name and no data migration is needed.
+
+Sites on WC Stock Sync move across by themselves: their update to 0.6.0 is a one-file migration release that installs Hashy Stock Sync from the same GitHub release, activates it, and deactivates itself. A notice confirms the hand-over; the old plugin can then be deleted from the Plugins screen. If the automatic step cannot run (for example `DISALLOW_FILE_MODS` is set), the notice says why and gives the manual path: install `hashy-stock-sync.zip`, activate it, deactivate WC Stock Sync. Hashy Stock Sync refuses to run while WC Stock Sync is still active, so the two can never double-process an order.
+
 == Automatic updates ==
 
-The plugin updates itself from GitHub Releases of the public repo (https://github.com/Hashy-au/wc-stock-sync); no configuration is needed on the sites. The **GitHub Update Token** setting is optional: supply a fine-grained token (this repo only, **Contents: Read-only**) to raise the GitHub API rate limit, or if the repo is ever made private again (`WCSS_GITHUB_TOKEN` in `wp-config.php` also works). Release zips are built with `scripts/build-release.ps1` and attached to a `vX.Y.Z` release as `wc-stock-sync.zip`.
+The plugin updates itself from GitHub Releases of the public repo (https://github.com/Hashy-au/wc-stock-sync); no configuration is needed on the sites. The **GitHub Update Token** setting is optional: supply a fine-grained token (this repo only, **Contents: Read-only**) to raise the GitHub API rate limit, or if the repo is ever made private again (`WCSS_GITHUB_TOKEN` in `wp-config.php` also works). Release zips are built with `scripts/build-release.ps1` and attached to a `vX.Y.Z` release as `hashy-stock-sync.zip`. The WordPress.org build (`-Directory`) ships without this updater.
 
 == REST endpoints ==
 
@@ -78,6 +84,15 @@ Stock quantity changes, stock status changes, and paid-order decrements. Price c
 A multiplier: 125 sends prices at +25%, 90 at −10%, 0 or empty leaves prices unchanged.
 
 == Changelog ==
+
+= 0.6.0 =
+
+Renamed:
+
+* WC Stock Sync is now Hashy Stock Sync: new plugin folder, main file and text domain (`hashy-stock-sync`), new menu title, same everything else. See "Renamed from WC Stock Sync" above for how existing sites move across and why nothing needs re-entering.
+* The 0.6.0 update offered to WC Stock Sync installs is the migration release: it installs and activates Hashy Stock Sync, then deactivates itself, and reports each step on the Logs page and in an admin notice.
+* Hashy Stock Sync pauses itself, with a notice and a one-click deactivate link, if WC Stock Sync is still active.
+* The GitHub token field is shown only in the GitHub edition; the WordPress.org build has no updater and no token field.
 
 = 0.5.1 =
 

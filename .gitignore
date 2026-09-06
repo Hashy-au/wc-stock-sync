@@ -6,6 +6,8 @@ dist/
 # Dependencies
 node_modules/
 vendor/
+# The bundled update checker's own vendor folder is part of the library, not a dependency install.
+!/includes/lib/plugin-update-checker/vendor/
 
 # Editors / IDE
 .vscode/

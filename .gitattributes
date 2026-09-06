@@ -9,6 +9,7 @@
 /dist export-ignore
 /tests export-ignore
 /docs export-ignore
+/shim export-ignore
 /phpcs.xml export-ignore
 /.gitattributes export-ignore
 /.gitignore export-ignore
