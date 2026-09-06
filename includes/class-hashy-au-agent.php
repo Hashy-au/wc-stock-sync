@@ -11,13 +11,6 @@ if (!defined('ABSPATH')) {
 
 final class Hashy_AU_Agent {
 
-    /**
-     * True while an inbound host update is being applied. The agent registers
-     * no stock hooks today, but the guard keeps any future hook additions
-     * from echoing remote changes back out.
-     */
-    private static bool $applying_remote = false;
-
     private static $instance = null;
     private string $route_namespace = 'hashy-sync/v1';
 
@@ -54,24 +47,44 @@ final class Hashy_AU_Agent {
         register_rest_route($this->route_namespace, '/host/ping', [
             'methods' => 'POST',
             'callback' => [$this, 'rest_host_ping'],
+            // Public by design: these calls carry no WordPress user. The
+            // callback authenticates the request itself with
+            // Hashy_AU_Crypto::verify() (HMAC-SHA256 over timestamp.body with
+            // the shared secret) before doing any work, and answers a uniform
+            // 403 on failure.
             'permission_callback' => '__return_true',
         ]);
 
         register_rest_route($this->route_namespace, '/host/stock-update', [
             'methods' => 'POST',
             'callback' => [$this, 'rest_host_stock_update'],
+            // Public by design: these calls carry no WordPress user. The
+            // callback authenticates the request itself with
+            // Hashy_AU_Crypto::verify() (HMAC-SHA256 over timestamp.body with
+            // the shared secret) before doing any work, and answers a uniform
+            // 403 on failure.
             'permission_callback' => '__return_true',
         ]);
 
         register_rest_route($this->route_namespace, '/host/sku-index', [
             'methods' => 'POST',
             'callback' => [$this, 'rest_host_sku_index'],
+            // Public by design: these calls carry no WordPress user. The
+            // callback authenticates the request itself with
+            // Hashy_AU_Crypto::verify() (HMAC-SHA256 over timestamp.body with
+            // the shared secret) before doing any work, and answers a uniform
+            // 403 on failure.
             'permission_callback' => '__return_true',
         ]);
 
         register_rest_route($this->route_namespace, '/host/sku-index-detailed', [
             'methods' => 'POST',
             'callback' => [$this, 'rest_host_sku_index_detailed'],
+            // Public by design: these calls carry no WordPress user. The
+            // callback authenticates the request itself with
+            // Hashy_AU_Crypto::verify() (HMAC-SHA256 over timestamp.body with
+            // the shared secret) before doing any work, and answers a uniform
+            // 403 on failure.
             'permission_callback' => '__return_true',
         ]);
     }
@@ -420,7 +433,9 @@ public function rest_host_stock_update(WP_REST_Request $request): WP_REST_Respon
             $product->update_meta_data('_wcss_last_sync_ts', (string) $incoming_ts);
         }
 
-        self::$applying_remote = true;
+        // The agent registers no stock hooks, so applying this update cannot
+        // echo back to the Host. If outbound stock hooks are ever added here,
+        // guard this block the way Hashy_AU_Host::$suppress_push does.
 
         // stock_qty is null when the host product doesn't manage stock.
         $qty = (isset($data['stock_qty']) && is_numeric($data['stock_qty'])) ? (int) $data['stock_qty'] : null;
@@ -452,8 +467,6 @@ public function rest_host_stock_update(WP_REST_Request $request): WP_REST_Respon
         }
 
         $product->save();
-
-        self::$applying_remote = false;
 
         Hashy_AU_Logger::instance()->info('Applied host update', [
             'sku' => $sku,

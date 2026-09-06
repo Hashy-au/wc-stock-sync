@@ -2,7 +2,7 @@
 .SYNOPSIS
 Build a release zip of WC Stock Sync that extracts correctly on Linux.
 
-Uses bsdtar (tar.exe) — NEVER Compress-Archive, which writes backslash
+Uses bsdtar (tar.exe), never Compress-Archive, which writes backslash
 entry names that break extraction on Linux hosts.
 
 .USAGE
@@ -43,6 +43,7 @@ New-Item -ItemType Directory -Force $pkg | Out-Null
 Copy-Item (Join-Path $root 'wc-stock-sync.php') $pkg
 Copy-Item (Join-Path $root 'readme.txt') $pkg
 Copy-Item (Join-Path $root 'uninstall.php') $pkg
+Copy-Item (Join-Path $root 'LICENSE') $pkg
 Copy-Item (Join-Path $root 'includes') $pkg -Recurse
 
 # --- Build the zip with bsdtar (forward-slash entries).
@@ -61,7 +62,7 @@ if ($LASTEXITCODE -ne 0) { throw 'tar.exe -tf failed.' }
 $bad = @($entries | Where-Object { $_.Contains([string][char]92) -or ($_ -notmatch '^wc-stock-sync/') })
 if ($bad.Count -gt 0) {
     $bad | ForEach-Object { Write-Host "BAD ENTRY: $_" }
-    throw 'Zip contains invalid entry names — do not ship this file.'
+    throw 'Zip contains invalid entry names; do not ship this file.'
 }
 Write-Host ("OK: {0} entries, all under wc-stock-sync/ with forward slashes." -f @($entries).Count)
 Write-Host "Built: $zip"

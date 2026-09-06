@@ -109,8 +109,8 @@ public function map_to_host_sku(string $incoming_sku): string {
             wp_die('Host mode only', 400);
         }
 
-        $selected = isset($_GET['agents']) ? (array) $_GET['agents'] : [];
-        $selected = array_filter(array_map('sanitize_key', $selected));
+        $selected = isset($_GET['agents']) ? array_map('sanitize_key', (array) wp_unslash($_GET['agents'])) : [];
+        $selected = array_filter($selected);
 
         $host_items = Hashy_AU_Host::instance()->get_host_sku_items();
         $agents = Hashy_AU_Settings::instance()->get_host_agents();
@@ -137,7 +137,7 @@ public function map_to_host_sku(string $incoming_sku): string {
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
 
-        $out = fopen('php://output', 'w');
+        $out = fopen('php://output', 'w'); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- php://output stream for the CSV download; WP_Filesystem does not apply.
 
         $headers = ['normalized_key', 'match_source', 'host_product_name', 'host_variation_name', 'host_sku', 'host_type'];
         foreach ($agent_rows as $k => $info) {
@@ -162,7 +162,7 @@ public function map_to_host_sku(string $incoming_sku): string {
             $this->write_csv_row($out, $row);
         }
 
-        fclose($out);
+        fclose($out); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closes the php://output stream above.
         exit;
     }
 
@@ -175,8 +175,8 @@ public function map_to_host_sku(string $incoming_sku): string {
             wp_die('Host mode only', 400);
         }
 
-        $selected = isset($_GET['agents']) ? (array) $_GET['agents'] : [];
-        $selected = array_filter(array_map('sanitize_key', $selected));
+        $selected = isset($_GET['agents']) ? array_map('sanitize_key', (array) wp_unslash($_GET['agents'])) : [];
+        $selected = array_filter($selected);
 
         $host_items = Hashy_AU_Host::instance()->get_host_sku_items();
         $agents = Hashy_AU_Settings::instance()->get_host_agents();
@@ -212,7 +212,7 @@ public function map_to_host_sku(string $incoming_sku): string {
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
 
-        $out = fopen('php://output', 'w');
+        $out = fopen('php://output', 'w'); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- php://output stream for the CSV download; WP_Filesystem does not apply.
 
         $headers = ['normalized_key', 'match_source', 'host_product_name', 'host_variation_name', 'host_sku', 'host_type'];
         foreach ($agent_rows as $k => $info) {
@@ -237,13 +237,13 @@ public function map_to_host_sku(string $incoming_sku): string {
             $this->write_csv_row($out, $row);
         }
 
-        fclose($out);
+        fclose($out); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closes the php://output stream above.
         exit;
     }
 
     private function agent_key_from_url(string $url): string {
         $url = untrailingslashit($url);
-        $host = parse_url($url, PHP_URL_HOST);
+        $host = wp_parse_url($url, PHP_URL_HOST);
         if (!is_string($host) || $host === '') {
             return '';
         }
@@ -343,14 +343,14 @@ public function map_to_host_sku(string $incoming_sku): string {
         check_admin_referer('wcss_export');
 
         $items = Hashy_AU_Host::instance()->get_host_sku_items();
-        $host = parse_url((string) home_url(), PHP_URL_HOST);
+        $host = wp_parse_url((string) home_url(), PHP_URL_HOST);
         $filename = 'wcss-local-skus-' . ($host ? preg_replace('/[^a-z0-9]+/i', '-', (string) $host) : 'site') . '-' . gmdate('Ymd-His') . '.csv';
 
         nocache_headers();
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
 
-        $out = fopen('php://output', 'w');
+        $out = fopen('php://output', 'w'); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- php://output stream for the CSV download; WP_Filesystem does not apply.
         $this->write_csv_row($out, ['product_name', 'variation_name', 'sku', 'type', 'normalized_key']);
 
         foreach ($items as $it) {
@@ -370,9 +370,12 @@ public function map_to_host_sku(string $incoming_sku): string {
                 $norm,
             ]);
         }
-        fclose($out);
+        fclose($out); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closes the php://output stream above.
         exit;
     }
+
+    /** Upper bound for the mapping CSV upload; the stocktake xlsx allows 10 MB. */
+    private const MAX_CSV_UPLOAD_BYTES = 5242880; // 5 MB.
 
 function import_sku_mappings_draft(): void {
         if (!current_user_can('manage_woocommerce')) {
@@ -383,15 +386,29 @@ function import_sku_mappings_draft(): void {
         }
         check_admin_referer('wcss_import_sku_mappings');
 
-        if (empty($_FILES['wcss_csv']['tmp_name'])) {
-            wp_redirect(add_query_arg(['page' => 'wcss-import-export', 'wcss_msg' => 'missing_file'], admin_url('admin.php')));
+        // Same checks as the stocktake upload (Hashy_AU_Stocktake::handle_draft):
+        // a real upload that completed, a size cap, and a CSV by name or type.
+        $file = $_FILES['wcss_csv'] ?? null; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- each field is checked or sanitised below.
+        if (!is_array($file) || UPLOAD_ERR_OK !== (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE)
+            || empty($file['tmp_name']) || !is_uploaded_file((string) $file['tmp_name'])) {
+            wp_safe_redirect(add_query_arg(['page' => 'wcss-import-export', 'wcss_msg' => 'missing_file'], admin_url('admin.php')));
+            exit;
+        }
+        if ((int) ($file['size'] ?? 0) > self::MAX_CSV_UPLOAD_BYTES) {
+            wp_safe_redirect(add_query_arg(['page' => 'wcss-import-export', 'wcss_msg' => 'csv_too_large'], admin_url('admin.php')));
+            exit;
+        }
+        $upload_name = sanitize_file_name((string) ($file['name'] ?? ''));
+        $upload_type = sanitize_mime_type((string) ($file['type'] ?? ''));
+        if (!preg_match('/\.csv$/i', $upload_name) && 'text/csv' !== $upload_type) {
+            wp_safe_redirect(add_query_arg(['page' => 'wcss-import-export', 'wcss_msg' => 'invalid_csv'], admin_url('admin.php')));
             exit;
         }
 
-        $csv = file_get_contents((string) $_FILES['wcss_csv']['tmp_name']);
+        $csv = file_get_contents((string) $file['tmp_name']); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- reading a verified upload from PHP's temp dir; WP_Filesystem is for writes.
         $rows = $this->parse_csv_string((string) $csv);
         if (count($rows) < 2) {
-            wp_redirect(add_query_arg(['page' => 'wcss-import-export', 'wcss_msg' => 'invalid_csv'], admin_url('admin.php')));
+            wp_safe_redirect(add_query_arg(['page' => 'wcss-import-export', 'wcss_msg' => 'invalid_csv'], admin_url('admin.php')));
             exit;
         }
 
@@ -414,7 +431,7 @@ function import_sku_mappings_draft(): void {
 
         $host_sku_idx = array_search('host_sku', $header, true);
         if ($host_sku_idx === false) {
-            wp_redirect(add_query_arg(['page' => 'wcss-import-export', 'wcss_msg' => 'missing_host_sku'], admin_url('admin.php')));
+            wp_safe_redirect(add_query_arg(['page' => 'wcss-import-export', 'wcss_msg' => 'missing_host_sku'], admin_url('admin.php')));
             exit;
         }
 
@@ -492,7 +509,7 @@ function import_sku_mappings_draft(): void {
         ];
         set_transient('wcss_import_draft_' . get_current_user_id(), $draft, 2 * HOUR_IN_SECONDS);
 
-        wp_redirect(add_query_arg(['page' => 'wcss-import-export', 'wcss_draft' => '1'], admin_url('admin.php')));
+        wp_safe_redirect(add_query_arg(['page' => 'wcss-import-export', 'wcss_draft' => '1'], admin_url('admin.php')));
         exit;
     }
 
@@ -507,7 +524,7 @@ function import_sku_mappings_draft(): void {
 
         $draft = get_transient('wcss_import_draft_' . get_current_user_id());
         if (!is_array($draft) || empty($draft['changes']) || !is_array($draft['changes'])) {
-            wp_redirect(add_query_arg(['page' => 'wcss-import-export', 'wcss_msg' => 'no_draft'], admin_url('admin.php')));
+            wp_safe_redirect(add_query_arg(['page' => 'wcss-import-export', 'wcss_msg' => 'no_draft'], admin_url('admin.php')));
             exit;
         }
 
@@ -534,19 +551,20 @@ function import_sku_mappings_draft(): void {
 
         Hashy_AU_Logger::instance()->info('Import mappings applied', ['changes' => count($draft['changes']), 'warnings' => count((array) ($draft['warnings'] ?? []))]);
 
-        wp_redirect(add_query_arg(['page' => 'wcss-import-export', 'wcss_msg' => 'import_applied'], admin_url('admin.php')));
+        wp_safe_redirect(add_query_arg(['page' => 'wcss-import-export', 'wcss_msg' => 'import_applied'], admin_url('admin.php')));
         exit;
     }
 
     private function parse_csv_string(string $csv): array {
         $rows = [];
-        $fh = fopen('php://temp', 'r+');
-        fwrite($fh, $csv);
+        // In-memory php://temp stream so fgetcsv() can parse the string; no file is written.
+        $fh = fopen('php://temp', 'r+'); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
+        fwrite($fh, $csv); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite
         rewind($fh);
         while (($data = fgetcsv($fh)) !== false) {
             $rows[] = $data;
         }
-        fclose($fh);
+        fclose($fh); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
         return $rows;
     }
 
@@ -563,7 +581,7 @@ public function export_skus(): void {
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
 
-        $out = fopen('php://output', 'w');
+        $out = fopen('php://output', 'w'); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- php://output stream for the CSV download; WP_Filesystem does not apply.
         $this->write_csv_row($out, ['Product Name', 'Variation Name', 'SKU', 'Product ID', 'Variation ID']);
 
         $args = [
@@ -598,7 +616,7 @@ public function export_skus(): void {
             $this->write_csv_row($out, [$product->get_name(), '', $sku, $product->get_id(), '']);
         }
 
-        fclose($out);
+        fclose($out); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closes the php://output stream above.
         exit;
     }
 
@@ -614,7 +632,7 @@ public function export_skus(): void {
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
 
-        $out = fopen('php://output', 'w');
+        $out = fopen('php://output', 'w'); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- php://output stream for the CSV download; WP_Filesystem does not apply.
         $this->write_csv_row($out, ['normalized_sku', 'host_sku']);
 
         $m = $this->get_mappings();
@@ -622,7 +640,7 @@ public function export_skus(): void {
             $this->write_csv_row($out, [$k, $v]);
         }
 
-        fclose($out);
+        fclose($out); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closes the php://output stream above.
         exit;
     }
 
