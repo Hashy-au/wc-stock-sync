@@ -1,9 +1,9 @@
 <?php
 /**
- * Settings UI and option storage for WC Stock Sync.
+ * Settings UI and option storage for Hashy Stock Sync.
  *
  * Admin UI:
- * - WC Stock Sync (top-level)
+ * - Hashy Stock Sync (top-level)
  *   - Settings
  *   - Import/Export
  *   - Missing SKUs
@@ -123,8 +123,8 @@ final class Hashy_AU_Settings {
 
 	public function register_admin_menu(): void {
 		add_menu_page(
-			'WC Stock Sync',
-			'WC Stock Sync',
+			'Hashy Stock Sync',
+			'Hashy Stock Sync',
 			'manage_woocommerce',
 			'wcss',
 			array( $this, 'render_settings_page' ),
@@ -267,7 +267,7 @@ final class Hashy_AU_Settings {
 
 		?>
 		<div class="wrap">
-			<h1>WC Stock Sync: Settings</h1>
+			<h1>Hashy Stock Sync: Settings</h1>
 
 			<form method="post" action="options.php">
 				<?php settings_fields( 'wcss_settings' ); ?>
@@ -291,6 +291,7 @@ final class Hashy_AU_Settings {
 							</label>
 						</td>
 					</tr>
+					<?php if ( defined( 'WCSS_GITHUB_REPO' ) ) : ?>
 					<tr>
 						<th scope="row">GitHub Update Token</th>
 						<td>
@@ -299,6 +300,7 @@ final class Hashy_AU_Settings {
 							<p class="description">Optional. Updates come from the public GitHub repo and need no token; supply one only to raise the GitHub API rate limit or if the repo is ever made private (fine-grained, this repo only, <strong>Contents: Read-only</strong>). Can also be set via <code>WCSS_GITHUB_TOKEN</code> in wp-config.php.</p>
 						</td>
 					</tr>
+					<?php endif; ?>
 				</table>
 
 				<?php if ( 'agent' === $mode ) : ?>
@@ -397,7 +399,7 @@ final class Hashy_AU_Settings {
 			</form>
 
 			<p class="description">
-				Price sync runs in background batches. Check <strong>WC Stock Sync → Logs</strong> for progress and errors.
+				Price sync runs in background batches. Check <strong>Hashy Stock Sync → Logs</strong> for progress and errors.
 			</p>
 		</div>
 
@@ -646,7 +648,7 @@ final class Hashy_AU_Settings {
 
 		?>
 		<div class="wrap">
-			<h1>WC Stock Sync: Import/Export</h1>
+			<h1>Hashy Stock Sync: Import/Export</h1>
 
 			<?php if ( 'host' !== $mode ) : ?>
 				<div class="notice notice-warning" style="padding:12px;">
@@ -833,7 +835,7 @@ final class Hashy_AU_Settings {
 
 		?>
 		<div class="wrap">
-			<h1>WC Stock Sync: Missing SKUs</h1>
+			<h1>Hashy Stock Sync: Missing SKUs</h1>
 
 			<h2>Host missing (reported by Agents)</h2>
 			<p class="description">Incoming order items that could not be matched to a Host SKU/product.</p>
@@ -856,7 +858,7 @@ final class Hashy_AU_Settings {
 
 		?>
 		<div class="wrap">
-			<h1>WC Stock Sync: Logs</h1>
+			<h1>Hashy Stock Sync: Logs</h1>
 
 			<p>
 				<a href="#" class="button" id="wcss_clear_logs">Clear logs</a>

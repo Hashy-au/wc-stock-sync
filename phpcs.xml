@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<ruleset name="WC Stock Sync">
+<ruleset name="Hashy Stock Sync">
 	<description>WordPress-Extra for the plugin source. Mirrors the 2026-09-06 review ruleset (wp_plugins/REVIEW/tooling/phpcs.xml). Run "phpcs" from the plugin root; "phpcbf" applies the fixable part.</description>
 
 	<file>.</file>
@@ -19,13 +19,18 @@
 
 	<rule ref="WordPress-Extra"/>
 
+	<!-- The migration shim is a one-file plugin; its main file must keep the old slug's name. -->
+	<rule ref="WordPress.Files.FileName.InvalidClassFileName">
+		<exclude-pattern>*/shim/wc-stock-sync/wc-stock-sync.php</exclude-pattern>
+	</rule>
+
 	<config name="minimum_wp_version" value="6.0"/>
 	<config name="testVersion" value="7.4-"/>
 
 	<rule ref="WordPress.WP.I18n">
 		<properties>
 			<property name="text_domain" type="array">
-				<element value="wc-stock-sync"/>
+				<element value="hashy-stock-sync"/>
 			</property>
 		</properties>
 	</rule>

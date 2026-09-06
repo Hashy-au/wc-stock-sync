@@ -142,14 +142,29 @@ final class Hashy_AU_Bootstrap {
 		if ( ! is_array( $errors ) || empty( $errors ) ) {
 			return;
 		}
-		echo '<div class="notice notice-error"><p><strong>WC Stock Sync</strong> self-check found issues:</p><ul style="margin-left:18px; list-style:disc;">';
+		echo '<div class="notice notice-error"><p><strong>Hashy Stock Sync</strong> self-check found issues:</p><ul style="margin-left:18px; list-style:disc;">';
 		foreach ( $errors as $e ) {
 			echo '<li>' . esc_html( (string) $e ) . '</li>';
 		}
-		echo '</ul><p>See <strong>WC Stock Sync → Logs</strong> for details.</p></div>';
+		echo '</ul><p>See <strong>Hashy Stock Sync → Logs</strong> for details.</p></div>';
+	}
+
+	/**
+	 * One-time notice after the old plugin's migration shim (WC Stock Sync
+	 * 0.6.0) has installed and activated this plugin. The shim sets the
+	 * transient; it is shown once to an administrator and then removed.
+	 * Hooked at file scope in the main file so it shows even without
+	 * WooCommerce.
+	 */
+	public static function maybe_show_migrated_notice(): void {
+		if ( ! current_user_can( 'activate_plugins' ) || ! get_transient( 'wcss_slug_migration_done' ) ) {
+			return;
+		}
+		delete_transient( 'wcss_slug_migration_done' );
+		echo '<div class="notice notice-success is-dismissible"><p><strong>Hashy Stock Sync</strong> has replaced <strong>WC Stock Sync</strong> (the same plugin under its new name). Settings, secrets, mappings and queues carried over unchanged. The old plugin is deactivated and can be deleted from the <a href="' . esc_url( admin_url( 'plugins.php' ) ) . '">Plugins screen</a>.</p></div>';
 	}
 
 	public function notice_requires_woocommerce(): void {
-		echo '<div class="notice notice-error"><p><strong>WC Stock Sync</strong> requires WooCommerce to be installed and active.</p></div>';
+		echo '<div class="notice notice-error"><p><strong>Hashy Stock Sync</strong> requires WooCommerce to be installed and active.</p></div>';
 	}
 }
