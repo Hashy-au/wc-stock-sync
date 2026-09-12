@@ -3,7 +3,7 @@
  * Plugin Name: Hashy Stock Sync
  * Plugin URI: https://hashy.com.au
  * Description: Host + Agent WooCommerce stock/price sync.
- * Version: 0.6.0
+ * Version: 0.6.1
  * Author: Hashy-au
  * License: GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -70,7 +70,7 @@ if ( hashy_stock_sync_old_plugin_active() ) {
 	return; // Nothing else in this file runs: no constants, no bootstrap, no update checker.
 }
 
-define( 'WC_STOCK_SYNC_VERSION', '0.6.0' );
+define( 'WC_STOCK_SYNC_VERSION', '0.6.1' );
 define( 'HASHY_AU_PLUGIN_FILE', __FILE__ );
 define( 'WC_STOCK_SYNC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WC_STOCK_SYNC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
