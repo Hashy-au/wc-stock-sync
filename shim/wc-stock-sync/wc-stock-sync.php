@@ -3,7 +3,7 @@
  * Plugin Name: WC Stock Sync
  * Plugin URI: https://hashy.com.au
  * Description: Migration release. Installs and activates Hashy Stock Sync (the same plugin under its new name), then deactivates itself. Settings, secrets, mappings and queues carry over unchanged.
- * Version: 0.6.0
+ * Version: 0.6.1
  * Author: Hashy-au
  * License: GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -46,7 +46,7 @@ final class WCSS_Slug_Migration {
 	const NEW_SLUG     = 'hashy-stock-sync';
 	const NEW_BASENAME = 'hashy-stock-sync/hashy-stock-sync.php';
 	const NEW_NAME     = 'Hashy Stock Sync';
-	const PACKAGE_URL  = 'https://github.com/Hashy-au/wc-stock-sync/releases/download/v0.6.0/hashy-stock-sync.zip';
+	const PACKAGE_URL  = 'https://github.com/Hashy-au/wc-stock-sync/releases/download/v0.6.1/hashy-stock-sync.zip';
 
 	const LOCK_TRANSIENT  = 'wcss_slug_migration_lock';
 	const ERROR_TRANSIENT = 'wcss_slug_migration_error';
