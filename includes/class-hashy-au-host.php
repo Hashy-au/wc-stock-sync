@@ -33,6 +33,19 @@ final class Hashy_AU_Host {
 		self::$suppress_push = $suppress;
 	}
 
+	/**
+	 * Whether pushes are currently suppressed (an inbound change or a stocktake
+	 * batch is being applied). Read by Solkarra Restock Alerts, which defers
+	 * its back-in-stock evaluation to the end of the request while this is
+	 * true rather than dropping the event: a stocktake correction is a real
+	 * restock and customers should hear about it.
+	 *
+	 * @return bool
+	 */
+	public static function pushes_suppressed(): bool {
+		return self::$suppress_push;
+	}
+
 	public static function instance(): self {
 		if ( null === self::$instance ) {
 			self::$instance = new self();

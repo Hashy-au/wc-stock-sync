@@ -4,7 +4,7 @@ Tags: woocommerce, inventory, stock, sync, stocktake
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.6.0
+Stable tag: 0.6.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -84,6 +84,9 @@ Stock quantity changes, stock status changes, and paid-order decrements. Price c
 A multiplier: 125 sends prices at +25%, 90 at −10%, 0 or empty leaves prices unchanged.
 
 == Changelog ==
+
+= 0.6.1 =
+* Adds Hashy_AU_Host::pushes_suppressed(), a read-only getter for the push suppression flag, so Solkarra Restock Alerts can defer its back-in-stock evaluation while a stocktake or inbound sync is being applied. No behaviour change.
 
 = 0.6.0 =
 
