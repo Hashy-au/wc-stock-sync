@@ -1,0 +1,164 @@
+{
+  "_comment": "Shared resolver fixture (D-36.11). The PHP resolver in Hashy Stock Sync and the Dart resolver in the Solkarra Desktop App both run every case here and both pin `hash`. Change it in one repo and copy it to the other; each side's checksum test names the drift.",
+  "aliases": {
+    "spine": ["Arrow Spine (Wood)", "Arrow Spine (Carbon)", "Spine", "spine", "Arrow Spine", "pa_spine"],
+    "tip": ["Arrowheads", "Arrowhead", "Wood Arrowtips"],
+    "grains": ["Tip Grains"],
+    "diameter": ["Diameter"]
+  },
+  "norm_values": [
+    ["30-35lb-2", "30-35"],
+    ["30-35 lb", "30-35"],
+    ["30-35#", "30-35"],
+    ["30-35", "30-35"],
+    ["30lb", "30"],
+    ["45-50lb-2", "45-50"],
+    ["500 spine", "500"],
+    ["spine 500", "500"],
+    ["500", "500"],
+    ["100gn", "100"],
+    ["100 grains", "100"],
+    ["85gn", "85"],
+    ["8mm-5-16", "8mm-5-16"],
+    ["5-16-8mm", "5-16-8mm"],
+    ["31-5in", "31-5in"],
+    ["Longobarda", "longobarda"],
+    ["brass-bullets", "brass-bullets"],
+    ["match-my-arrows-to-my-new-bow", "match-my-arrows-to-my-new-bow"],
+    ["  70  ", "70"],
+    ["", ""]
+  ],
+  "role_keys": [
+    ["Arrow Spine (Wood)", "spine"],
+    ["arrow-spine-wood", "spine"],
+    ["attribute_arrow-spine-wood", "spine"],
+    ["pa_spine", "spine"],
+    ["attribute_pa_spine", "spine"],
+    ["Spine", "spine"],
+    ["SPINE", "spine"],
+    ["Arrow Spine (Carbon)", "spine"],
+    ["arrow-spine-carbon", "spine"],
+    ["Arrowheads", "tip"],
+    ["arrowheads", "tip"],
+    ["Wood Arrowtips", "tip"],
+    ["wood-arrowtips", "tip"],
+    ["Tip Grains", "grains"],
+    ["tip-grains", "grains"],
+    ["pa_tip-grains", "grains"],
+    ["Diameter", "diameter"],
+    ["Colour", null],
+    ["Arrow Length", null],
+    ["", null]
+  ],
+  "catalogue": [
+    {"sku": "ATLAS-SLATE-FA", "kind": "variable", "parent_sku": null, "attrs": {}},
+    {"sku": "ATLAS-SLATE-FA-400", "kind": "variation", "parent_sku": "ATLAS-SLATE-FA", "attrs": {"pa_spine": "400"}},
+    {"sku": "ATLAS-SLATE-FA-500", "kind": "variation", "parent_sku": "ATLAS-SLATE-FA", "attrs": {"pa_spine": "500"}},
+    {"sku": "ATLAS-SLATE-FA-600", "kind": "variation", "parent_sku": "ATLAS-SLATE-FA", "attrs": {"pa_spine": "600"}},
+    {"sku": "ATLAS-SLATE-FA-700", "kind": "variation", "parent_sku": "ATLAS-SLATE-FA", "attrs": {"pa_spine": "700"}},
+    {"sku": "ATLAS-SLATE-FA-800", "kind": "variation", "parent_sku": "ATLAS-SLATE-FA", "attrs": {"pa_spine": "800"}},
+    {"sku": "ATLAS-SLATE-BS", "kind": "variable", "parent_sku": null, "attrs": {}},
+    {"sku": "ATLAS-SLATE-BS-400", "kind": "variation", "parent_sku": "ATLAS-SLATE-BS", "attrs": {"pa_spine": "400"}},
+    {"sku": "ATLAS-SLATE-BS-500", "kind": "variation", "parent_sku": "ATLAS-SLATE-BS", "attrs": {"pa_spine": "500"}},
+    {"sku": "ATLAS-SLATE-BS-600", "kind": "variation", "parent_sku": "ATLAS-SLATE-BS", "attrs": {"pa_spine": "600"}},
+    {"sku": "ATLAS-SLATE-BS-700", "kind": "variation", "parent_sku": "ATLAS-SLATE-BS", "attrs": {"pa_spine": "700"}},
+    {"sku": "ATLAS-SLATE-BS-800", "kind": "variation", "parent_sku": "ATLAS-SLATE-BS", "attrs": {"pa_spine": "800"}},
+    {"sku": "17GB4", "kind": "variable", "parent_sku": null, "attrs": {}},
+    {"sku": "17GB4-01", "kind": "variation", "parent_sku": "17GB4", "attrs": {"arrow-spine-wood": "", "arrowheads": "longobarda", "arrow-length": ""}},
+    {"sku": "17GB4-02", "kind": "variation", "parent_sku": "17GB4", "attrs": {"arrow-spine-wood": "", "arrowheads": "", "arrow-length": ""}},
+    {"sku": "ICW95", "kind": "variable", "parent_sku": null, "attrs": {}},
+    {"sku": "ICW95-1", "kind": "variation", "parent_sku": "ICW95", "attrs": {"spine": "30lb"}},
+    {"sku": "ICW95-2", "kind": "variation", "parent_sku": "ICW95", "attrs": {"spine": "30-35lb-2"}},
+    {"sku": "ICW95-3", "kind": "variation", "parent_sku": "ICW95", "attrs": {"spine": "35-40lb-2"}},
+    {"sku": "ICW95-4", "kind": "variation", "parent_sku": "ICW95", "attrs": {"spine": "40-45lb-2"}},
+    {"sku": "ICW95-5", "kind": "variation", "parent_sku": "ICW95", "attrs": {"spine": "45-50lb-2"}},
+    {"sku": "PRM_16355", "kind": "variable", "parent_sku": null, "attrs": {}},
+    {"sku": "PRM_16355-01", "kind": "variation", "parent_sku": "PRM_16355", "attrs": {"diameter": "8mm-5-16", "tip-grains": "85gn"}},
+    {"sku": "PRM_16355-02", "kind": "variation", "parent_sku": "PRM_16355", "attrs": {"diameter": "8mm-5-16", "tip-grains": "100gn"}},
+    {"sku": "PRM_16355-03", "kind": "variation", "parent_sku": "PRM_16355", "attrs": {"diameter": "9mm-11-32", "tip-grains": "100gn"}},
+    {"sku": "PRM_66265", "kind": "variable", "parent_sku": null, "attrs": {}},
+    {"sku": "PRM_66265-01", "kind": "variation", "parent_sku": "PRM_66265", "attrs": {"tip-grains": "80", "diameter": "8mm-5-16"}},
+    {"sku": "PRM_66265-02", "kind": "variation", "parent_sku": "PRM_66265", "attrs": {"tip-grains": "100", "diameter": "8mm-5-16"}},
+    {"sku": "PRM_66265-03", "kind": "variation", "parent_sku": "PRM_66265", "attrs": {"tip-grains": "100", "diameter": "9mm-11-32"}},
+    {"sku": "PRM_66265-04", "kind": "variation", "parent_sku": "PRM_66265", "attrs": {"tip-grains": "125", "diameter": "9mm-11-32"}},
+    {"sku": "FLUFLU", "kind": "simple", "parent_sku": null, "attrs": {}},
+    {"sku": "NOCK-BP", "kind": "simple", "parent_sku": null, "attrs": {}}
+  ],
+  "recipes": [
+    {"id": "r1-atlas-slate", "assembled_sku": "ATLAS-SLATE-FA", "component_sku": "ATLAS-SLATE-BS", "qty_per": 1, "match": ["spine"], "fixed": {}, "value_map": null, "default_component_variant": null, "default_attrs": {}, "derives": true, "mode": "live", "note": ""},
+    {"id": "r2-wood-shafts", "assembled_sku": "17GB4", "component_sku": "ICW95", "qty_per": 12, "match": ["spine"], "fixed": {}, "value_map": null, "default_component_variant": null, "default_attrs": {}, "derives": true, "mode": "shadow", "note": "wood arrows are dozens, shafts are singles"},
+    {"id": "r3-wood-tips", "assembled_sku": "17GB4", "component_sku": null, "qty_per": 1, "match": ["grains"], "fixed": {"diameter": "8mm-5-16"}, "value_map": {"role": "tip", "map": {"longobarda": "PRM_16355", "brass-bullets": "PRM_66265"}, "default_parent": "PRM_66265"}, "default_component_variant": null, "default_attrs": {"grains": "100"}, "derives": false, "mode": "live", "note": ""},
+    {"id": "r4-fluflu-nocks", "assembled_sku": "FLUFLU", "component_sku": "NOCK-BP", "qty_per": 6, "match": [], "fixed": {}, "value_map": null, "default_component_variant": null, "default_attrs": {}, "derives": false, "mode": "live", "note": ""},
+    {"id": "r5-fluflu-ambiguous", "assembled_sku": "FLUFLU", "component_sku": "PRM_66265", "qty_per": 6, "match": [], "fixed": {}, "value_map": null, "default_component_variant": null, "default_attrs": {}, "derives": false, "mode": "live", "note": ""}
+  ],
+  "hash": "8f58c2e81553a877e97839b379e35fc436d5448baf9b5bfbd9be36c12afe0554",
+  "stocks": {
+    "ATLAS-SLATE-BS-400": 20, "ATLAS-SLATE-BS-500": 7, "ATLAS-SLATE-BS-600": 0, "ATLAS-SLATE-BS-700": 12, "ATLAS-SLATE-BS-800": 3,
+    "ICW95-2": 30, "ICW95-5": 11,
+    "PRM_16355-02": 2, "PRM_66265-02": 40, "NOCK-BP": 100
+  },
+  "derived": [
+    {"assembled_sku": "ATLAS-SLATE-FA-500", "expect": 7},
+    {"assembled_sku": "ATLAS-SLATE-FA-600", "expect": 0},
+    {"assembled_sku": "ATLAS-SLATE-FA-700", "expect": 12},
+    {"assembled_sku": "17GB4-01", "expect": null, "why": "its only derives recipe is in shadow, so nothing derives"},
+    {"assembled_sku": "FLUFLU", "expect": null, "why": "no derives recipe"}
+  ],
+  "cases": [
+    {"name": "atlas spine from the line", "assembled_sku": "ATLAS-SLATE-FA-500", "line_attrs": {"pa_spine": "500"}, "line_qty": 1,
+     "expect": [{"recipe_id": "r1-atlas-slate", "matched": "match", "component_sku": "ATLAS-SLATE-BS-500", "qty": 1}]},
+    {"name": "atlas spine from the variation when the line carries nothing (an old agent)", "assembled_sku": "ATLAS-SLATE-FA-500", "line_attrs": {}, "line_qty": 3,
+     "expect": [{"recipe_id": "r1-atlas-slate", "matched": "match", "component_sku": "ATLAS-SLATE-BS-500", "qty": 3}]},
+    {"name": "the line wins over the variation", "assembled_sku": "ATLAS-SLATE-FA-500", "line_attrs": {"pa_spine": "600"}, "line_qty": 1,
+     "expect": [{"recipe_id": "r1-atlas-slate", "matched": "match", "component_sku": "ATLAS-SLATE-BS-600", "qty": 1}]},
+    {"name": "a spine no shaft carries", "assembled_sku": "ATLAS-SLATE-FA-800", "line_attrs": {"pa_spine": "900"}, "line_qty": 1,
+     "expect": [{"recipe_id": "r1-atlas-slate", "matched": "unresolved", "reason": "no_match", "wanted": {"spine": "900"}}]},
+    {"name": "wood arrows: spine chosen at checkout, a premium tip, a dozen each", "assembled_sku": "17GB4-01", "line_attrs": {"arrow-spine-wood": "30-35lb", "arrowheads": "longobarda"}, "line_qty": 2,
+     "expect": [
+       {"recipe_id": "r2-wood-shafts", "matched": "match", "component_sku": "ICW95-2", "qty": 24},
+       {"recipe_id": "r3-wood-tips", "matched": "value_map", "component_sku": "PRM_16355-02", "qty": 2}
+     ]},
+    {"name": "wood arrows: no tip chosen takes the default parent", "assembled_sku": "17GB4-02", "line_attrs": {"arrow-spine-wood": "45-50lb-2"}, "line_qty": 1,
+     "expect": [
+       {"recipe_id": "r2-wood-shafts", "matched": "match", "component_sku": "ICW95-5", "qty": 12},
+       {"recipe_id": "r3-wood-tips", "matched": "default", "component_sku": "PRM_66265-02", "qty": 1}
+     ]},
+    {"name": "a spine value that is not a spine", "assembled_sku": "17GB4-01", "line_attrs": {"arrow-spine-wood": "match-my-arrows-to-my-new-bow", "arrowheads": "longobarda"}, "line_qty": 1,
+     "expect": [
+       {"recipe_id": "r2-wood-shafts", "matched": "unresolved", "reason": "no_match", "wanted": {"spine": "match-my-arrows-to-my-new-bow"}},
+       {"recipe_id": "r3-wood-tips", "matched": "value_map", "component_sku": "PRM_16355-02", "qty": 1}
+     ]},
+    {"name": "spine left Any and nothing chosen", "assembled_sku": "17GB4-02", "line_attrs": {}, "line_qty": 1,
+     "expect": [
+       {"recipe_id": "r2-wood-shafts", "matched": "unresolved", "reason": "missing_value", "wanted": {}},
+       {"recipe_id": "r3-wood-tips", "matched": "default", "component_sku": "PRM_66265-02", "qty": 1}
+     ]},
+    {"name": "a tip the map does not know", "assembled_sku": "17GB4-01", "line_attrs": {"arrow-spine-wood": "30-35lb", "arrowheads": "aragorn"}, "line_qty": 1,
+     "expect": [
+       {"recipe_id": "r2-wood-shafts", "matched": "match", "component_sku": "ICW95-2", "qty": 12},
+       {"recipe_id": "r3-wood-tips", "matched": "unresolved", "reason": "no_map", "wanted": {"tip": "aragorn"}}
+     ]},
+    {"name": "grains chosen by the customer", "assembled_sku": "17GB4-01", "line_attrs": {"arrow-spine-wood": "30-35lb", "arrowheads": "longobarda", "tip-grains": "85gn"}, "line_qty": 1,
+     "expect": [
+       {"recipe_id": "r2-wood-shafts", "matched": "match", "component_sku": "ICW95-2", "qty": 12},
+       {"recipe_id": "r3-wood-tips", "matched": "value_map", "component_sku": "PRM_16355-01", "qty": 1}
+     ]},
+    {"name": "a fixed component on a simple product, and an ambiguous one", "assembled_sku": "FLUFLU", "line_attrs": {}, "line_qty": 1,
+     "expect": [
+       {"recipe_id": "r4-fluflu-nocks", "matched": "match", "component_sku": "NOCK-BP", "qty": 6},
+       {"recipe_id": "r5-fluflu-ambiguous", "matched": "ambiguous", "reason": "ambiguous", "wanted": {}}
+     ]},
+    {"name": "a product with no recipe resolves to nothing", "assembled_sku": "NOCK-BP", "line_attrs": {}, "line_qty": 1, "expect": []}
+  ],
+  "invalid_sets": [
+    {"name": "a row naming itself", "recipes": [{"id": "x", "assembled_sku": "A", "component_sku": "A", "qty_per": 1, "match": [], "mode": "live", "derives": true}], "error": "self_reference"},
+    {"name": "a cycle across rows", "recipes": [
+      {"id": "x", "assembled_sku": "A", "component_sku": "B", "qty_per": 1, "match": [], "mode": "live", "derives": true},
+      {"id": "y", "assembled_sku": "B", "component_sku": "C", "qty_per": 1, "match": [], "mode": "live", "derives": true},
+      {"id": "z", "assembled_sku": "C", "component_sku": "A", "qty_per": 1, "match": [], "mode": "live", "derives": true}], "error": "cycle"},
+    {"name": "qty_per out of range", "recipes": [{"id": "x", "assembled_sku": "A", "component_sku": "B", "qty_per": 0, "match": [], "mode": "live", "derives": true}], "error": "qty_per"},
+    {"name": "an unknown mode", "recipes": [{"id": "x", "assembled_sku": "A", "component_sku": "B", "qty_per": 1, "match": [], "mode": "maybe", "derives": true}], "error": "mode"},
+    {"name": "neither a component nor a value map", "recipes": [{"id": "x", "assembled_sku": "A", "component_sku": null, "qty_per": 1, "match": [], "mode": "live", "derives": false}], "error": "component"},
+    {"name": "a value map row that derives", "recipes": [{"id": "x", "assembled_sku": "A", "component_sku": null, "qty_per": 1, "match": [], "value_map": {"role": "tip", "map": {"a": "B"}, "default_parent": "B"}, "mode": "live", "derives": true}], "error": "derives"}
+  ]
+}

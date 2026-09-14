@@ -1,0 +1,42 @@
+{
+	"$schema": "https://playground.wordpress.net/blueprint-schema.json",
+	"preferredVersions": {
+		"php": "8.3",
+		"wp": "latest"
+	},
+	"features": {
+		"networking": true
+	},
+	"steps": [
+		{
+			"step": "defineWpConfigConsts",
+			"consts": {
+				"WP_DEBUG": true,
+				"WP_DEBUG_DISPLAY": false,
+				"WP_DEBUG_LOG": true
+			}
+		},
+		{
+			"step": "installPlugin",
+			"pluginData": {
+				"resource": "wordpress.org/plugins",
+				"slug": "woocommerce"
+			},
+			"options": {
+				"activate": true
+			}
+		},
+		{
+			"step": "activatePlugin",
+			"pluginPath": "hashy-stock-sync/hashy-stock-sync.php"
+		},
+		{
+			"step": "runPHP",
+			"code": "<?php require_once '/wordpress/wp-load.php'; $f = WP_PLUGIN_DIR . '/hashy-stock-sync/tests/playground/fixtures-recipes.php'; if ( is_readable( $f ) ) { require_once $f; hashy_recipes_install_fixtures(); } else { echo 'tests/playground/fixtures-recipes.php not found: mount the plugin folder together with its tests directory.'; }"
+		},
+		{
+			"step": "wp-cli",
+			"command": "wp eval-file /wordpress/wp-content/plugins/hashy-stock-sync/tests/playground/smoke-recipes.php"
+		}
+	]
+}

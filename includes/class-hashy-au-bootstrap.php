@@ -36,6 +36,15 @@ final class Hashy_AU_Bootstrap {
 		require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-host.php';
 		require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-agent.php';
 		require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-stocktake.php';
+		// Component recipes (design/26): the resolver and the API surface load
+		// in every mode (the agent builds line attributes with the resolver,
+		// the connector's class_exists check needs the API); the runtime,
+		// ledger and admin pages are host-only and initialised below.
+		require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-recipe-resolver.php';
+		require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-ledger.php';
+		require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-recipes.php';
+		require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-recipes-api.php';
+		require_once WC_STOCK_SYNC_PLUGIN_DIR . 'includes/class-hashy-au-recipes-admin.php';
 
 		Hashy_AU_Settings::instance()->init();
 		Hashy_AU_Catalog::instance()->init();
@@ -46,6 +55,9 @@ final class Hashy_AU_Bootstrap {
 		if ( 'host' === $mode ) {
 			Hashy_AU_Host::instance()->init();
 			Hashy_AU_Stocktake::instance()->init();
+			Hashy_AU_Ledger::maybe_install();
+			Hashy_AU_Recipes::instance()->init();
+			Hashy_AU_Recipes_Admin::instance()->init();
 		} else {
 			Hashy_AU_Agent::instance()->init();
 		}
@@ -85,6 +97,7 @@ final class Hashy_AU_Bootstrap {
 		wp_clear_scheduled_hook( 'wcss_retry_failed_requests' );
 		wp_clear_scheduled_hook( 'wcss_agent_process_outbox' );
 		wp_clear_scheduled_hook( 'wcss_drain_push_queue' );
+		wp_clear_scheduled_hook( 'hashy_au_recompute_derived' );
 	}
 
 

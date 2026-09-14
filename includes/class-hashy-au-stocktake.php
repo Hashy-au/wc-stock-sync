@@ -340,6 +340,8 @@ final class Hashy_AU_Stocktake {
 		}
 		Hashy_AU_Host::suppress_pushes( false );
 
+		// Derived arrows the recipes recomputed under suppression push too.
+		$touched = array_merge( $touched, Hashy_AU_Recipes::instance()->drain_touched() );
 		$this->queue_pushes( $touched );
 
 		$cursor       += count( $slice );
@@ -406,7 +408,7 @@ final class Hashy_AU_Stocktake {
 
 	/* ------------------------------------------------------------ Push queue */
 
-	private function queue_pushes( array $product_ids ): void {
+	public function queue_pushes( array $product_ids ): void {
 		if ( empty( $product_ids ) ) {
 			return;
 		}
