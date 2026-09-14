@@ -46,6 +46,37 @@ final class Hashy_AU_Host {
 		return self::$suppress_push;
 	}
 
+	/**
+	 * Seconds added to a product's next payload ts, so a second push of the
+	 * same product inside one second is not dropped by the agents' strictly
+	 * newer rule (Hashy_AU_Recipes sets a derived arrow after Woo's own
+	 * checkout decrement already pushed it).
+	 *
+	 * @var array<int, int>
+	 */
+	private static array $ts_bumps = array();
+
+	/**
+	 * Whether this request already pushed a product (the coalescing set).
+	 *
+	 * @param int $product_id Product or variation id.
+	 * @return bool
+	 */
+	public static function was_pushed_this_request( int $product_id ): bool {
+		return isset( self::$pushed_ids[ $product_id ] );
+	}
+
+	/**
+	 * Make the product's next payload carry a ts one second newer than the
+	 * last one this request built for it.
+	 *
+	 * @param int $product_id Product or variation id.
+	 * @return void
+	 */
+	public static function bump_ts_for( int $product_id ): void {
+		self::$ts_bumps[ $product_id ] = (int) ( self::$ts_bumps[ $product_id ] ?? 0 ) + 1;
+	}
+
 	public static function instance(): self {
 		if ( null === self::$instance ) {
 			self::$instance = new self();
@@ -76,6 +107,21 @@ final class Hashy_AU_Host {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'rest_agent_order_paid' ),
+				// Public by design: these calls carry no WordPress user. The
+				// callback authenticates the request itself with
+				// Hashy_AU_Crypto::verify() (HMAC-SHA256 over timestamp.body with
+				// the per-agent shared secret) before doing any work, and answers
+				// a uniform 403 on failure.
+				'permission_callback' => '__return_true',
+			)
+		);
+
+		register_rest_route(
+			$this->route_namespace,
+			'/agent/order-restored',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'rest_agent_order_restored' ),
 				// Public by design: these calls carry no WordPress user. The
 				// callback authenticates the request itself with
 				// Hashy_AU_Crypto::verify() (HMAC-SHA256 over timestamp.body with
@@ -208,7 +254,7 @@ final class Hashy_AU_Host {
 		self::suppress_pushes( true );
 
 		$touched_ids = array();
-		foreach ( $items as $row ) {
+		foreach ( $items as $index => $row ) {
 			if ( ! is_array( $row ) ) {
 				continue;
 			}
@@ -234,9 +280,18 @@ final class Hashy_AU_Host {
 			}
 
 			$touched_ids[] = (int) $product_id;
+
+			// Components (design/26): what this arrow line consumed, applied
+			// here under the same suppression; the derived arrow figure
+			// follows through the set_stock hook and lands in drain_touched().
+			$touched_ids = array_merge(
+				$touched_ids,
+				Hashy_AU_Recipes::instance()->apply_agent_row( $agent_url, $order_id, (int) $index, $row, $product )
+			);
 		}
 
 		self::suppress_pushes( false );
+		$touched_ids = array_merge( $touched_ids, Hashy_AU_Recipes::instance()->drain_touched() );
 
 		// Push updated stock to ALL agents for all touched SKUs.
 		$touched_ids = array_values( array_unique( $touched_ids ) );
@@ -265,6 +320,154 @@ final class Hashy_AU_Host {
 			),
 			200
 		);
+	}
+
+	/**
+	 * An agent's order was cancelled or refunded (design/26, D-36.6): give
+	 * back the arrow line and every component its ledger rows consumed, then
+	 * push. Idempotent per agent, order and event, so a retry or a second
+	 * hook firing changes nothing.
+	 *
+	 * Body: {agent_url, order_id, event: cancelled|refunded, refund_id,
+	 * items: [{sku, qty, line_id}], ts}.
+	 */
+	public function rest_agent_order_restored( WP_REST_Request $request ): WP_REST_Response {
+		$raw_body  = (string) $request->get_body();
+		$timestamp = (string) $request->get_header( 'x-hashy-timestamp' );
+		$signature = (string) $request->get_header( 'x-hashy-signature' );
+
+		// Verify before parsing details or logging anything; see rest_host_ping.
+		$data      = json_decode( $raw_body, true );
+		$agent_url = is_array( $data ) ? untrailingslashit( (string) ( $data['agent_url'] ?? '' ) ) : '';
+		$agent     = ( '' !== $agent_url ) ? $this->find_agent_by_url( $agent_url ) : null;
+		$secret    = is_array( $agent ) ? (string) ( $agent['shared_secret'] ?? '' ) : '';
+
+		if ( empty( $secret ) || ! Hashy_AU_Crypto::verify( $secret, $timestamp, $raw_body, $signature ) ) {
+			$this->log_auth_failure( 'order-restored' );
+			return new WP_REST_Response(
+				array(
+					'ok'    => false,
+					'error' => 'forbidden',
+				),
+				403
+			);
+		}
+
+		$order_id  = (int) ( $data['order_id'] ?? 0 );
+		$event     = sanitize_key( (string) ( $data['event'] ?? '' ) );
+		$refund_id = (int) ( $data['refund_id'] ?? 0 );
+		$items     = isset( $data['items'] ) && is_array( $data['items'] ) ? $data['items'] : array();
+		if ( $order_id <= 0 || empty( $items ) || ! in_array( $event, array( 'cancelled', 'refunded' ), true ) ) {
+			return new WP_REST_Response(
+				array(
+					'ok'    => false,
+					'error' => 'missing_fields',
+				),
+				400
+			);
+		}
+		$event_key = 'refunded' === $event ? 'refund:' . $refund_id : 'cancelled';
+
+		$agent_host = wp_parse_url( $agent_url, PHP_URL_HOST );
+		$agent_key  = is_string( $agent_host ) ? preg_replace( '/[^a-z0-9]+/', '_', strtolower( $agent_host ) ) : '';
+
+		if ( $this->is_restore_seen( $agent_url, $order_id, $event_key ) ) {
+			return new WP_REST_Response(
+				array(
+					'ok'      => true,
+					'deduped' => true,
+				),
+				200
+			);
+		}
+		// Mark seen BEFORE applying, as order-paid does.
+		$this->mark_restore_seen( $agent_url, $order_id, $event_key );
+
+		Hashy_AU_Logger::instance()->info(
+			'Inbound agent order-restored received',
+			array(
+				'agent_url' => $agent_url,
+				'order_id'  => $order_id,
+				'event'     => $event_key,
+				'items'     => count( $items ),
+			)
+		);
+
+		self::suppress_pushes( true );
+		$touched_ids = array();
+		foreach ( $items as $index => $row ) {
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
+			$sku = (string) ( $row['sku'] ?? '' );
+			$qty = (int) ( $row['qty'] ?? 0 );
+			if ( empty( $sku ) || $qty <= 0 ) {
+				continue;
+			}
+			$product_id = $this->find_host_product_id_by_sku( $sku, $agent_key );
+			if ( ! $product_id ) {
+				$this->record_missing_host_sku( $agent_url, $sku );
+				continue;
+			}
+			$product = wc_get_product( $product_id );
+			if ( ! $product ) {
+				continue;
+			}
+
+			// A derived arrow is set from its shafts: the component increase
+			// below restores it. Any other product gets the mirror of the
+			// order-paid decrement.
+			if ( $product->managing_stock() && ! Hashy_AU_Recipes::instance()->is_derived( $product ) ) {
+				wc_update_product_stock( $product, $qty, 'increase' );
+			}
+			$touched_ids[] = (int) $product_id;
+
+			$line_id     = isset( $row['line_id'] ) && '' !== (string) $row['line_id'] ? (string) $row['line_id'] : 'i' . (int) $index;
+			$touched_ids = array_merge( $touched_ids, Hashy_AU_Recipes::instance()->reverse_line( $agent_url, $order_id, $line_id, (int) $product_id, $qty ) );
+		}
+		self::suppress_pushes( false );
+		$touched_ids = array_merge( $touched_ids, Hashy_AU_Recipes::instance()->drain_touched() );
+
+		$touched_ids = array_values( array_unique( $touched_ids ) );
+		foreach ( $touched_ids as $pid ) {
+			$p = wc_get_product( $pid );
+			if ( ! $p ) {
+				continue;
+			}
+			$this->push_to_all_agents( $this->build_payload( $p ), false );
+		}
+
+		Hashy_AU_Logger::instance()->info(
+			'Agent order-restored applied',
+			array(
+				'agent_url' => $agent_url,
+				'order_id'  => $order_id,
+				'event'     => $event_key,
+				'touched'   => count( $touched_ids ),
+			)
+		);
+
+		return new WP_REST_Response(
+			array(
+				'ok'      => true,
+				'touched' => count( $touched_ids ),
+			),
+			200
+		);
+	}
+
+	private function is_restore_seen( string $agent_url, int $order_id, string $event_key ): bool {
+		$seen = get_option( 'wcss_seen_restores', array() );
+		return is_array( $seen ) && ! empty( $seen[ $agent_url . ':' . $order_id . ':' . $event_key ] );
+	}
+
+	private function mark_restore_seen( string $agent_url, int $order_id, string $event_key ): void {
+		$seen = get_option( 'wcss_seen_restores', array() );
+		if ( ! is_array( $seen ) ) {
+			$seen = array();
+		}
+		$seen[ $agent_url . ':' . $order_id . ':' . $event_key ] = time();
+		update_option( 'wcss_seen_restores', self::trim_seen_orders( $seen ), false );
 	}
 
 	public function on_stock_changed( $product ): void {
@@ -679,7 +882,7 @@ final class Hashy_AU_Host {
 			'price'         => $product->get_price(),
 			'regular_price' => $product->get_regular_price(),
 			'sale_price'    => $product->get_sale_price(),
-			'ts'            => time(),
+			'ts'            => time() + (int) ( self::$ts_bumps[ (int) $product->get_id() ] ?? 0 ),
 		);
 	}
 

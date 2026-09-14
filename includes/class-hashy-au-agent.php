@@ -38,6 +38,13 @@ final class Hashy_AU_Agent {
 		add_action( 'woocommerce_order_status_completed', array( $this, 'on_order_completed' ), 10, 1 );
 		add_action( 'woocommerce_order_status_changed', array( $this, 'on_status_changed' ), 10, 4 );
 
+		// Restores (design/26, D-36.6): a cancel or a refund of an order this
+		// agent already reported goes back to the host, which reverses the
+		// arrow line and whatever components it consumed.
+		add_action( 'woocommerce_order_status_cancelled', array( $this, 'on_order_cancelled' ), 10, 1 );
+		add_action( 'woocommerce_order_fully_refunded', array( $this, 'on_order_refunded' ), 10, 2 );
+		add_action( 'woocommerce_order_partially_refunded', array( $this, 'on_order_refunded' ), 10, 2 );
+
 		add_action( 'hashy_au_daily_reconcile', array( $this, 'daily_reconcile' ) );
 	}
 
@@ -194,9 +201,16 @@ final class Hashy_AU_Agent {
 				continue;
 			}
 
+			// line_id, variation_id and attributes are additive (design/26): a
+			// 0.6.x host reads sku and qty and ignores the rest. The attributes
+			// carry what the customer chose, "Any" attributes included, so the
+			// host can tell which spine an arrow line consumed.
 			$items[] = array(
-				'sku' => $sku,
-				'qty' => $qty,
+				'sku'          => $sku,
+				'qty'          => $qty,
+				'line_id'      => (int) $item->get_id(),
+				'variation_id' => (int) $item->get_variation_id(),
+				'attributes'   => (object) Hashy_AU_Recipes::line_attrs_from_item( $item, $product ),
 			);
 		}
 
@@ -282,6 +296,149 @@ final class Hashy_AU_Agent {
 			array(
 				'order_id' => $order_id,
 				'code'     => $code,
+			)
+		);
+	}
+
+	public function on_order_cancelled( $order_id ): void {
+		$order = wc_get_order( (int) $order_id );
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+		$items = array();
+		foreach ( $order->get_items() as $item ) {
+			if ( ! $item instanceof WC_Order_Item_Product ) {
+				continue;
+			}
+			$product = $item->get_product();
+			$sku     = $product ? (string) $product->get_sku() : '';
+			if ( '' === $sku || (int) $item->get_quantity() <= 0 ) {
+				continue;
+			}
+			$items[] = array(
+				'sku'     => $sku,
+				'qty'     => (int) $item->get_quantity(),
+				'line_id' => (int) $item->get_id(),
+			);
+		}
+		$this->send_order_restored( $order, 'cancelled', 0, $items );
+	}
+
+	/**
+	 * A refund (full or partial): the refund's own lines say what came back.
+	 *
+	 * @param int|mixed $order_id  Order id.
+	 * @param int|mixed $refund_id Refund id.
+	 */
+	public function on_order_refunded( $order_id, $refund_id = 0 ): void {
+		$order  = wc_get_order( (int) $order_id );
+		$refund = $refund_id ? wc_get_order( (int) $refund_id ) : null;
+		if ( ! $order instanceof WC_Order || ! $refund instanceof WC_Order_Refund ) {
+			return;
+		}
+		$items = array();
+		foreach ( $refund->get_items() as $refund_item ) {
+			if ( ! $refund_item instanceof WC_Order_Item_Product ) {
+				continue;
+			}
+			$qty = abs( (int) $refund_item->get_quantity() );
+			if ( $qty <= 0 ) {
+				continue;
+			}
+			$product = $refund_item->get_product();
+			$sku     = $product ? (string) $product->get_sku() : '';
+			if ( '' === $sku ) {
+				continue;
+			}
+			// A refund line points at the original line through _refunded_item_id.
+			$items[] = array(
+				'sku'     => $sku,
+				'qty'     => $qty,
+				'line_id' => (int) $refund_item->get_meta( '_refunded_item_id', true ),
+			);
+		}
+		$this->send_order_restored( $order, 'refunded', (int) $refund_id, $items );
+	}
+
+	/**
+	 * Tell the host an order's lines came back. Only for orders this agent
+	 * reported paid, once per event (cancelled, or refund:<id>); a failed
+	 * send waits in the outbox under a type carrying the event key, because
+	 * the outbox dedupes on type and order id.
+	 */
+	private function send_order_restored( WC_Order $order, string $event, int $refund_id, array $items ): void {
+		if ( empty( $items ) || $order->get_meta( '_hashy_au_sent_to_host' ) !== 'yes' ) {
+			return;
+		}
+		$event_key = 'refunded' === $event ? 'refund:' . $refund_id : 'cancelled';
+		$done      = $order->get_meta( '_hashy_au_restored_to_host', true );
+		$done      = is_array( $done ) ? $done : array();
+		if ( in_array( $event_key, $done, true ) ) {
+			return;
+		}
+		$done[] = $event_key;
+		$order->update_meta_data( '_hashy_au_restored_to_host', $done );
+		$order->save_meta_data();
+
+		$host_url = Hashy_AU_Settings::instance()->get_agent_host_url();
+		$secret   = Hashy_AU_Settings::instance()->get_agent_shared_secret();
+		if ( empty( $host_url ) || empty( $secret ) ) {
+			return;
+		}
+
+		$payload   = array(
+			'agent_url' => untrailingslashit( home_url() ),
+			'order_id'  => (int) $order->get_id(),
+			'event'     => $event,
+			'refund_id' => $refund_id,
+			'items'     => $items,
+			'ts'        => time(),
+		);
+		$endpoint  = untrailingslashit( $host_url ) . '/wp-json/hashy-sync/v1/agent/order-restored';
+		$body      = (string) wp_json_encode( $payload );
+		$timestamp = (string) time();
+		$signature = Hashy_AU_Crypto::sign( $secret, $timestamp, $body );
+
+		$res = wp_remote_post(
+			$endpoint,
+			array(
+				'timeout' => 15,
+				'headers' => array(
+					'Content-Type'      => 'application/json',
+					'X-Hashy-Timestamp' => $timestamp,
+					'X-Hashy-Signature' => $signature,
+				),
+				'body'    => $body,
+			)
+		);
+		$code = is_wp_error( $res ) ? 0 : (int) wp_remote_retrieve_response_code( $res );
+		if ( $code >= 200 && $code < 300 ) {
+			Hashy_AU_Logger::instance()->info(
+				'Order restored notify OK',
+				array(
+					'order_id' => $order->get_id(),
+					'event'    => $event_key,
+				)
+			);
+			return;
+		}
+		Hashy_AU_Logger::instance()->warning(
+			'Order restored notify failed, queued',
+			array(
+				'order_id' => $order->get_id(),
+				'event'    => $event_key,
+				'error'    => is_wp_error( $res ) ? $res->get_error_message() : 'HTTP ' . $code,
+			)
+		);
+		$this->enqueue_outbox(
+			array(
+				'type'       => 'order_restored:' . $event_key,
+				'order_id'   => (int) $order->get_id(),
+				'endpoint'   => $endpoint,
+				'body'       => $body,
+				'attempts'   => 0,
+				'created_at' => time(),
+				'next_try'   => time() + 300,
 			)
 		);
 	}

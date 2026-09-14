@@ -4,7 +4,7 @@ Tags: woocommerce, inventory, stock, sync, stocktake
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.6.1
+Stable tag: 0.7.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -25,6 +25,7 @@ Features:
 * SKU normalization for matching prefixed SKUs like `PRM-XXXX` / `ABA-XXXX` across stores (any leading 3-character alphanumeric prefix plus separator is stripped, all separators removed, uppercased), with per-agent mapping overrides and a CSV import/export workflow for maintaining them.
 * **Stocktake (xlsx)** on the Host: download a spreadsheet (Name | SKU | Stock | New Stock | Product ID), count stock into the New Stock column offline, upload it back, review the previewed changes, and batch-apply. Blank cells are skipped (partial stocktakes are safe); a typed 0 sets stock to zero. Applied changes push to all Agents automatically via a background-drained queue.
 * Manual batch stock/price sync per Agent, filtered to SKUs the Agent actually has.
+* **Component recipes** on the Host (0.7.0): arrows assembled from shafts and tips consume them the moment a sale lands on any store, an assembled product's own figure is derived from its shafts, and every consumption is a ledger row. Recipes are authored in the Solkarra Desktop App and pushed through the solkarra-ai connector; wp-admin shows them read-only. Cancels and refunds on Agents restore both the line and its components.
 * Missing-SKU reports on both sides and an in-admin log viewer.
 * Automatic plugin updates from the GitHub repository (see below).
 
@@ -54,7 +55,8 @@ All endpoints are POST, signed with `X-Hashy-Timestamp` / `X-Hashy-Signature` he
 
 Host side:
 
-* `/wp-json/hashy-sync/v1/agent/order-paid`: Agent reports a paid order; Host decrements stock and fans updates out to all Agents. Deduplicated by order ID per Agent.
+* `/wp-json/hashy-sync/v1/agent/order-paid`: Agent reports a paid order; Host decrements stock and fans updates out to all Agents. Deduplicated by order ID per Agent. Since 0.7.0 each item may also carry `line_id`, `variation_id` and `attributes` (the chosen attributes, "Any" ones included) so component recipes can resolve; a 0.6.x Host ignores them.
+* `/wp-json/hashy-sync/v1/agent/order-restored` (0.7.0): Agent reports a cancelled or refunded order; Host restores the lines and the components their ledger rows consumed, then fans out. Deduplicated per Agent, order and event.
 * `/wp-json/hashy-sync/v1/host/ping`: connectivity test.
 
 Agent side:
@@ -84,6 +86,17 @@ Stock quantity changes, stock status changes, and paid-order decrements. Price c
 A multiplier: 125 sends prices at +25%, 90 at −10%, 0 or empty leaves prices unchanged.
 
 == Changelog ==
+
+= 0.7.0 =
+
+Component recipes (design/26 in the Solkarra Desktop App, decisions D-36.1 to D-36.11). Host only, nothing changes for products without a recipe.
+
+* A recipe set (arrow product, component product, quantity per unit sold, the roles that must agree, aliases per role, value maps for tips, fixed attributes, shadow or live, derives or not) is stored on the Host, pushed from the Solkarra Desktop App through the solkarra-ai connector's `write-recipes`, and shown read-only under Hashy Stock Sync > Recipes.
+* When an arrow line lands on the Host (an Agent's order-paid, or the Host's own checkout) each live recipe row decrements its component variation and writes a row to the component ledger (`{prefix}hashy_component_ledger`); a shadow row records what would have moved and moves nothing; a line whose spine or tip cannot be matched is recorded as unresolved and moves nothing.
+* An arrow with a live, deriving recipe has its own quantity set to what its shafts allow (floor of component stock over quantity per unit), recomputed on every change to those components and pushed to every Agent. Tips are consumed but never derive.
+* Agents send `line_id`, `variation_id` and the line's chosen attributes with order-paid, and report cancels and refunds to the new `/agent/order-restored` endpoint; the Host restores the line and the components its ledger rows consumed.
+* The connector reads the set and the ledger through `Hashy_AU_Recipes_API` (in-process, no new REST route).
+* New options `hashy_au_recipes`, `hashy_au_db_version`, `hashy_au_recompute_queue`, `wcss_seen_restores`; new cron `hashy_au_recompute_derived`; the ledger is pruned by the daily reconcile.
 
 = 0.6.1 =
 * Adds Hashy_AU_Host::pushes_suppressed(), a read-only getter for the push suppression flag, so Solkarra Restock Alerts can defer its back-in-stock evaluation while a stocktake or inbound sync is being applied. No behaviour change.

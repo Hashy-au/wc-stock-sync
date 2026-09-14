@@ -1,0 +1,157 @@
+
+# boot
+  ok    plugin version is 0.7.0
+  ok    the install is in host mode
+  ok    three agents are configured
+  ok    the first agent secret round-tripped through the sealed store
+  ok    the four recipe classes are loaded
+  ok    the ledger table exists after one init
+  ok    the db version option is stamped
+  ok    the API reports available
+  ok    no recipe set is stored yet
+  ok    the fixture arrow figure is deliberately wrong before the first write
+  ok    the derived recompute hooks set_stock at priority 20
+
+# write
+  ok    a cyclic set is refused as cycle
+  ok    a bad qty_per is refused as validation
+  ok    a refused write stores nothing
+  ok    the fixture set is written
+  ok    the hub hash equals the fixture hash pinned on both sides
+  ok    five rows stored
+  ok    recipes() answers the stored hash
+  ok    the same idempotency key replays without writing
+  ok    a stale expected hash is refused
+  ok    the right expected hash writes
+  ok    aliases are stored lower-cased
+
+# derived
+  ok    one assembled parent has a live deriving row (Atlas)
+  ok    all five Atlas arrows were set on the first write
+  ok    FA-500 now equals its shafts (20)
+  ok    FA-800 now equals its shafts (20)
+  ok    the wood arrow (shadow) keeps its own figure
+  ok    FA-500 was pushed to the three agents
+  ok    the pushed figure is the derived one
+
+# agent sale
+  ok    order-paid from asiaticbows is accepted
+  ok    the 500 shaft went 20 to 19
+  ok    the 500 arrow is derived to 19
+  ok    the 600 shaft is untouched
+  ok    a ledger row was written
+  ok    it matched
+  ok    it is applied
+  ok    it consumed one unit
+  ok    it carries the agent line id
+  ok    it names the shaft
+  ok    it carries the set hash
+  ok    the shaft was pushed to three agents
+  ok    the derived arrow was pushed to three agents
+  ok    the arrow push carries 19
+
+# old agent
+  ok    a 0.6.x payload (sku and qty only) is accepted
+  ok    the 600 shaft went 20 to 18 from the variation attribute
+  ok    the 600 arrow is derived to 18
+  ok    the line id falls back to the item index
+  ok    two units consumed
+
+# unresolved
+  ok    an order with an unresolvable spine is accepted
+  ok    the shaft row is unresolved
+  ok    with reason no_match
+  ok    and it names what it wanted
+  ok    nothing applied for it
+  ok    the tip row matched through the value map
+  ok    Longobarda 5/16 at the default 100 grains
+  ok    the tip pack went 10 to 9
+  ok    no shaft moved
+  ok    one unresolved row is outstanding
+
+# shadow
+  ok    a wood arrow sale is accepted
+  ok    the shadow shaft row matched
+  ok    in shadow
+  ok    it would have taken 12 shafts
+  ok    and moved nothing
+  ok    ICW95-2 is untouched by a shadow row
+  ok    no tip chosen takes the default parent
+  ok    Brass 5/16 100 went 40 to 39
+
+# dedupe
+  ok    a re-sent order-paid is deduped
+  ok    the shaft did not move again
+
+# hub checkout
+  ok    a hub checkout took one 700 shaft
+  ok    the 700 arrow reads 19
+  ok    a ledger row was written for the hub order
+  ok    it carries the hub line id
+  ok    it is applied
+  ok    the line carries the ledger guard meta
+  ok    a second reduce pass applies nothing
+  ok    the shaft was pushed on the hub checkout
+  ok    the arrow reached the agents at 19
+
+# agent restore
+  ok    a cancel from asiaticbows is accepted
+  ok    the 500 shaft is back to 20
+  ok    the 500 arrow is derived back to 20, not double-restored
+  ok    the ledger row shows one unit reversed
+  ok    with a reversed_at stamp
+  ok    the restored arrow was pushed
+  ok    a re-sent cancel is deduped
+  ok    and moves nothing
+  ok    after refund:9 the 600 shaft reads 19
+  ok    after refund:10 the 600 shaft reads 20
+  ok    after refund:11 the 600 shaft reads 20
+  ok    a bad signature on order-restored is a 403
+
+# hub refund
+  ok    a hub refund with restock was created
+  ok    the 700 shaft is back to 20
+  ok    the 700 arrow is derived back to 20
+  ok    the hub ledger row shows one unit reversed
+
+# connector path
+  ok    a count write on the 800 shaft derives the arrow to 5
+  ok    the shaft was pushed by the host hook
+  ok    the derived arrow was pushed exactly once per agent
+  ok    carrying 5
+  ok    a shaft pool at zero takes the arrow to zero at once (D-36.2)
+  ok    and out of stock
+  ok    and back to 20 when the shafts return
+
+# stocktake path
+  ok    under suppression the 400 arrow still derives to 7
+  ok    and its id waits in drain_touched() for the caller to push
+  ok    nothing was pushed while suppressed
+  ok    draining clears the list
+
+# api reads
+  ok    the ledger holds the rows written above (7)
+  ok    one page holds them all
+  ok    next_id is the last id
+  ok    a limit of 2 answers 2 rows
+  ok    and says there are more
+  ok    the next page starts after the cursor
+  ok    wanted is decoded to a map
+  ok    reads carry the plugin version
+
+# acknowledge
+  ok    one unresolved row lists
+  ok    it can be acknowledged
+  ok    and no longer counts as outstanding
+  ok    pruning removes nothing this young
+
+# uninstall
+  ok    uninstall drops the ledger table
+  ok    uninstall removes the recipe option
+
+# log
+  ok    the log records the recipe write
+  ok    no PHP fatal in debug.log
+  ok    no PHP notice names a recipe file
+
+HASHY_RECIPES_SMOKE 121 passed, 0 failed
