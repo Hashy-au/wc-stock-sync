@@ -144,6 +144,27 @@ if ($Shim) {
 # --- Optional: publish a GitHub release with the update assets attached.
 if ($Publish) {
     $tag = "v$version"
+
+    # The tag must point at the code in the zip. gh tags the remote's HEAD, and
+    # the bundled update checker reads the plugin header AT THE TAG, so a
+    # release cut before the commit is pushed advertises the old version and
+    # no site ever sees the update (0.7.0, 2026-09-14). Refuse uncommitted
+    # work and push HEAD first. git reports progress on stderr, which
+    # Windows PowerShell treats as an error under 'Stop'; the exit code is
+    # the verdict.
+    $dirty = & git status --porcelain
+    if ($LASTEXITCODE -ne 0) { throw 'git status failed.' }
+    if ($dirty) {
+        $dirty | ForEach-Object { Write-Host "UNCOMMITTED: $_" }
+        throw 'Commit (or stash) before publishing: the release tag must point at the code it ships.'
+    }
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & git push origin HEAD 2>&1 | ForEach-Object { Write-Host $_ }
+    $pushExit = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
+    if ($pushExit -ne 0) { throw 'git push failed; nothing was released.' }
+
     Write-Host "Publishing release $tag with: $($built -join ', ')"
     $notes = "Hashy Stock Sync $version. hashy-stock-sync.zip is the plugin; wc-stock-sync.zip, where present, is the migration release that moves WC Stock Sync installs to it."
     & gh release create $tag @built --title $tag --notes $notes
