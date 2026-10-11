@@ -1,0 +1,42 @@
+﻿Hashy Stock Sync two-site test
+  plugin: C:\Development\wp_plugins\wc-stock-sync-pushfix
+  hub ready on port 9531
+  agent ready on port 9532
+  plugin version 0.7.1, hub mode host
+
+# 1. stock push, Sync Prices off
+  ok    push, box off: HSS-A 9|120|99|99|2026-10-10..2026-10-18
+  ok    push, box off: HSS-B 9|120||120|-..-
+  ok    push, box off: HSS-C 9|120|99|120|2026-10-14..2026-10-21
+  ok    push, box off: HSS-D-1 9|60|45|45|2026-10-10..2026-10-18
+  ok    push, box off: HSS-E 10|120|99|99|2026-10-10..2026-10-18
+
+# 2. stock push, Sync Prices on at 125
+  ok    push, box on: HSS-A 8|125.00|99|99|2026-10-10..2026-10-18
+  ok    push, box on: HSS-B 8|125.00||125.00|-..-
+  ok    push, box on: HSS-C 8|125.00|99|125.00|2026-10-14..2026-10-21
+  ok    push, box on: HSS-D-1 8|62.50|45|45|2026-10-10..2026-10-18
+  ok    push, box on: HSS-E 10|120|99|99|2026-10-10..2026-10-18
+
+# 3. Sync stock button, Sync Prices on at 125
+  ok    sync stock: HSS-A 8|120|99|99|2026-10-10..2026-10-18
+  ok    sync stock: HSS-B 8|120||120|-..-
+  ok    sync stock: HSS-C 8|120|99|120|2026-10-14..2026-10-21
+  ok    sync stock: HSS-D-1 8|60|45|45|2026-10-10..2026-10-18
+  ok    sync stock: HSS-E 10|120|99|99|2026-10-10..2026-10-18
+
+# 4. Sync prices button, Sync Prices on at 125
+  ok    sync prices: HSS-A 10|125.00|99|99|2026-10-10..2026-10-18
+  ok    sync prices: HSS-B 10|125.00||125.00|-..-
+  ok    sync prices: HSS-C 10|125.00|99|125.00|2026-10-14..2026-10-21
+  ok    sync prices: HSS-D-1 10|62.50|45|45|2026-10-10..2026-10-18
+  ok    sync prices: HSS-E 10|125.00|99|99|2026-10-10..2026-10-18
+
+# 5. a 0.7.0-shaped payload straight to the Agent
+  ok    legacy payload: HSS-A 7|100|99|99|2026-10-10..2026-10-18
+
+# 6. a 0.7.0-shaped retry-queue row, Sync Prices off
+  ok    legacy queue row: HSS-B 6|120||120|-..-
+  ok    legacy queue row: sent and removed from the queue
+
+HASHY_TWO_SITE 23 passed, 0 failed

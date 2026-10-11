@@ -300,8 +300,7 @@ final class Hashy_AU_Host {
 			if ( ! $p ) {
 				continue;
 			}
-			$payload_base = $this->build_payload( $p );
-			$this->push_to_all_agents( $payload_base, false );
+			$this->push_to_all_agents( $p );
 		}
 
 		Hashy_AU_Logger::instance()->info(
@@ -434,7 +433,7 @@ final class Hashy_AU_Host {
 			if ( ! $p ) {
 				continue;
 			}
-			$this->push_to_all_agents( $this->build_payload( $p ), false );
+			$this->push_to_all_agents( $p );
 		}
 
 		Hashy_AU_Logger::instance()->info(
@@ -517,8 +516,7 @@ final class Hashy_AU_Host {
 			return;
 		}
 
-		$payload = $this->build_payload( $product );
-		$this->push_to_all_agents( $payload, false );
+		$this->push_to_all_agents( $product );
 	}
 
 	/**
@@ -534,7 +532,7 @@ final class Hashy_AU_Host {
 		if ( $product->is_type( 'variation' ) && '' === (string) $product->get_sku( 'edit' ) ) {
 			return false;
 		}
-		$this->push_to_all_agents( $this->build_payload( $product ), false );
+		$this->push_to_all_agents( $product );
 		return true;
 	}
 
@@ -596,12 +594,12 @@ final class Hashy_AU_Host {
 				continue;
 			}
 
-			$payload                     = $this->build_payload( $product );
+			$payload = $this->with_regular_price( $this->build_payload( $product ), $product, $pct );
+			if ( ! isset( $payload['regular_price'] ) ) {
+				continue;
+			}
 			$payload['sync_prices_only'] = true;
 			$payload['price_pct']        = $pct;
-			$payload['price']            = $this->apply_price_pct( $payload['price'], $pct );
-			$payload['regular_price']    = $this->apply_price_pct( $payload['regular_price'], $pct );
-			$payload['sale_price']       = $this->apply_price_pct( $payload['sale_price'], $pct );
 
 			$this->do_push_stock_update( $agent, $payload );
 			++$processed;
@@ -800,6 +798,13 @@ final class Hashy_AU_Host {
 				continue;
 			}
 
+			// A row queued by 0.7.0 or older carries price fields on every
+			// push; send it with the fields a current push would carry.
+			unset( $payload['price'], $payload['sale_price'] );
+			if ( 'yes' !== (string) ( $agent['sync_prices'] ?? 'no' ) ) {
+				unset( $payload['regular_price'] );
+			}
+
 			// Retry without re-queueing on failure; retention is handled here.
 			$ok = $this->do_push_stock_update( $agent, $payload, false );
 			if ( $ok ) {
@@ -871,19 +876,36 @@ final class Hashy_AU_Host {
 		return null;
 	}
 
+	/**
+	 * A stock push: stock fields only. Before 0.7.1 this also carried price,
+	 * regular_price and sale_price, and the agent wrote all three, so every
+	 * stock change on the Host reset each Agent's regular price to the Host's
+	 * and ended or replaced that Agent's own sale (sale dates were never sent).
+	 * Sale price, sale dates and the active price are each store's own.
+	 */
 	private function build_payload( WC_Product $product ): array {
 		return array(
-			'host_url'      => untrailingslashit( home_url() ),
-			'product_id'    => (int) $product->get_id(),
-			'sku'           => (string) $product->get_sku(),
-			'stock_qty'     => $product->managing_stock() ? (int) $product->get_stock_quantity() : null,
-			'stock_status'  => (string) $this->compute_stock_status( $product ),
-			'manage_stock'  => (bool) $product->managing_stock(),
-			'price'         => $product->get_price(),
-			'regular_price' => $product->get_regular_price(),
-			'sale_price'    => $product->get_sale_price(),
-			'ts'            => time() + (int) ( self::$ts_bumps[ (int) $product->get_id() ] ?? 0 ),
+			'host_url'     => untrailingslashit( home_url() ),
+			'product_id'   => (int) $product->get_id(),
+			'sku'          => (string) $product->get_sku(),
+			'stock_qty'    => $product->managing_stock() ? (int) $product->get_stock_quantity() : null,
+			'stock_status' => (string) $this->compute_stock_status( $product ),
+			'manage_stock' => (bool) $product->managing_stock(),
+			'ts'           => time() + (int) ( self::$ts_bumps[ (int) $product->get_id() ] ?? 0 ),
 		);
+	}
+
+	/**
+	 * Add the Host's regular price, scaled by the agent's Price %, for an
+	 * agent with Sync Prices ticked. Nothing is added when the product has no
+	 * regular price of its own (a variable parent), so the Agent keeps its own.
+	 */
+	private function with_regular_price( array $payload, WC_Product $product, float $pct ): array {
+		$regular = (string) $product->get_regular_price( 'edit' );
+		if ( '' !== $regular ) {
+			$payload['regular_price'] = $this->apply_price_pct( $regular, $pct );
+		}
+		return $payload;
 	}
 
 	private function compute_stock_status( WC_Product $product ): string {
@@ -911,22 +933,21 @@ final class Hashy_AU_Host {
 		return wc_format_decimal( $p, wc_get_price_decimals() );
 	}
 
-	private function push_to_all_agents( array $payload_base, bool $prices_only ): void {
-		$agents = Hashy_AU_Settings::instance()->get_host_agents();
+	private function push_to_all_agents( WC_Product $product ): void {
+		$payload_base = $this->build_payload( $product );
+		$agents       = Hashy_AU_Settings::instance()->get_host_agents();
 		foreach ( $agents as $agent ) {
 			if ( ! is_array( $agent ) || empty( $agent['url'] ) || empty( $agent['shared_secret'] ) ) {
 				continue;
 			}
 			$payload = $payload_base;
 
-			$payload['sync_prices_only'] = $prices_only;
+			$payload['sync_prices_only'] = false;
 			$pct                         = (float) ( $agent['price_pct'] ?? 0.0 );
 			$payload['price_pct']        = $pct;
 
-			if ( $prices_only || ( 'yes' === (string) ( $agent['sync_prices'] ?? 'no' ) ) ) {
-				$payload['price']         = $this->apply_price_pct( $payload_base['price'], $pct );
-				$payload['regular_price'] = $this->apply_price_pct( $payload_base['regular_price'], $pct );
-				$payload['sale_price']    = $this->apply_price_pct( $payload_base['sale_price'], $pct );
+			if ( 'yes' === (string) ( $agent['sync_prices'] ?? 'no' ) ) {
+				$payload = $this->with_regular_price( $payload, $product, $pct );
 			}
 
 			$this->do_push_stock_update( $agent, $payload );

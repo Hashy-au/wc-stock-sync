@@ -4,17 +4,17 @@ Tags: woocommerce, inventory, stock, sync, stocktake
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.7.0
+Stable tag: 0.7.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Host and Agent stock sync for WooCommerce: keep stock on one primary store and mirror stock, status and prices to any number of storefronts.
+Host and Agent stock sync for WooCommerce: keep stock on one primary store and mirror stock and status (and, per Agent, regular price) to any number of storefronts.
 
 == Description ==
 
 Hashy Stock Sync runs in one of two modes:
 
-* **Host (primary)**: the stock hub. Receives paid-order notifications from Agents, decrements matching SKUs, and pushes stock/status/price updates out to every Agent.
+* **Host (primary)**: the stock hub. Receives paid-order notifications from Agents, decrements matching SKUs, and pushes stock and status updates out to every Agent, with the regular price for Agents that have Sync Prices ticked.
 * **Agent (secondary)**: a storefront. Notifies the Host when an order is paid and applies stock updates pushed from the Host.
 
 Features:
@@ -24,7 +24,7 @@ Features:
 * Retry queues on both sides: the Agent outbox re-signs and retries failed order notifications; the Host retries failed pushes hourly (max 12 attempts / 24h) via the existing agent config; secrets are never persisted into queue rows.
 * SKU normalization for matching prefixed SKUs like `PRM-XXXX` / `ABA-XXXX` across stores (any leading 3-character alphanumeric prefix plus separator is stripped, all separators removed, uppercased), with per-agent mapping overrides and a CSV import/export workflow for maintaining them.
 * **Stocktake (xlsx)** on the Host: download a spreadsheet (Name | SKU | Stock | New Stock | Product ID), count stock into the New Stock column offline, upload it back, review the previewed changes, and batch-apply. Blank cells are skipped (partial stocktakes are safe); a typed 0 sets stock to zero. Applied changes push to all Agents automatically via a background-drained queue.
-* Manual batch stock/price sync per Agent, filtered to SKUs the Agent actually has.
+* Manual batch stock sync and regular-price sync per Agent, filtered to SKUs the Agent actually has.
 * **Component recipes** on the Host (0.7.0): arrows assembled from shafts and tips consume them the moment a sale lands on any store, an assembled product's own figure is derived from its shafts, and every consumption is a ledger row. Recipes are authored in the Solkarra Desktop App and pushed through the solkarra-ai connector; wp-admin shows them read-only. Cancels and refunds on Agents restore both the line and its components.
 * Missing-SKU reports on both sides and an in-admin log viewer.
 * Automatic plugin updates from the GitHub repository (see below).
@@ -62,7 +62,7 @@ Host side:
 Agent side:
 
 * `/wp-json/hashy-sync/v1/host/ping`: connectivity test.
-* `/wp-json/hashy-sync/v1/host/stock-update`: Host pushes stock/status/price for one SKU. Stale/replayed payloads (by `ts`) are acknowledged but not applied.
+* `/wp-json/hashy-sync/v1/host/stock-update`: Host pushes stock and status for one SKU, plus `regular_price` when Sync Prices is ticked for that Agent. Stale/replayed payloads (by `ts`) are acknowledged but not applied. Since 0.7.1 the Agent ignores `price` and `sale_price` if an older Host still sends them.
 * `/wp-json/hashy-sync/v1/host/sku-index`: normalized SKU set, used to filter batch syncs.
 * `/wp-json/hashy-sync/v1/host/sku-index-detailed`: SKU list with names, used by the Import/Export mapping tools.
 
@@ -80,12 +80,25 @@ Yes, as long as each variation has its own SKU. Variations without their own SKU
 On paid events (payment complete / processing / completed). One send per order, deduplicated on both the Agent and the Host.
 
 = What triggers a push from the Host? =
-Stock quantity changes, stock status changes, and paid-order decrements. Price changes propagate via the manual per-agent batch sync (with the per-agent Price % multiplier), not automatically.
+Stock quantity changes, stock status changes, and paid-order decrements. A price change on its own pushes nothing: the regular price travels with the next stock push for that SKU, or with the per-Agent **Sync prices** button, and only to Agents with **Sync Prices** ticked.
+
+= Does it touch sale prices? =
+No, from 0.7.1. Sale price, sale dates and the price a customer pays are each store's own. Up to 0.7.0 every stock push carried the Host's regular, sale and active price whether or not Sync Prices was ticked, and the Agent applied them, so a stock change on the Host ended an Agent's own sale or copied the Host's sale onto the Agent with no end date. Updating the Host alone stops it (a 0.7.0 Agent applies only the fields it is sent); updating the Agents as well makes them ignore those fields from any Host.
 
 = What does Price % mean? =
-A multiplier: 125 sends prices at +25%, 90 at −10%, 0 or empty leaves prices unchanged.
+A multiplier on the regular price sent to an Agent with Sync Prices ticked: 125 sends it at +25%, 90 at −10%, 0 or empty sends it unchanged.
 
 == Changelog ==
+
+= 0.7.1 =
+
+A stock push carries stock, and nothing else unless Sync Prices is ticked.
+
+* The Host's stock push no longer carries `price` or `sale_price`, and carries `regular_price` (scaled by Price %) only for an Agent with Sync Prices ticked. Up to 0.7.0 every push carried all three for every Agent, so each stock change on the Host reset the Agent's regular price to the Host's, ended or replaced the Agent's own sale, and cancelled a scheduled one, leaving its dates behind.
+* **Sync stock** sends stock only. Up to 0.7.0 it also sent the Host's unscaled prices to every shared SKU, undoing Price % even with Sync Prices ticked.
+* **Sync prices** sends the scaled regular price only.
+* The Agent applies `regular_price` alone and lets WooCommerce derive the active price; `price` and `sale_price` from an older Host are ignored.
+* Queued retries built by 0.7.0 are sent without the price fields a current push would not carry.
 
 = 0.7.0 =
 

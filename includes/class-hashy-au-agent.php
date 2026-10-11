@@ -539,11 +539,13 @@ final class Hashy_AU_Agent {
 	 *  "stock_qty": 10,
 	 *  "stock_status":"instock",
 	 *  "manage_stock":true,
-	 *  "price":"29.00",
 	 *  "regular_price":"29.00",
-	 *  "sale_price":"",
 	 *  "ts": 123
 	 * }
+	 *
+	 * regular_price is present only when the Host's row for this Agent has
+	 * Sync Prices ticked. A Host older than 0.7.1 also sends price and
+	 * sale_price on every push; both are ignored.
 	 */
 
 	public function rest_host_ping( WP_REST_Request $request ): WP_REST_Response {
@@ -745,14 +747,13 @@ final class Hashy_AU_Agent {
 			}
 		}
 
-		// Pricing sync (optional fields).
-		foreach ( array( 'regular_price', 'sale_price' ) as $p ) {
-			if ( array_key_exists( $p, $data ) ) {
-				$product->{"set_{$p}"}( $data[ $p ] );
-			}
-		}
-		if ( array_key_exists( 'price', $data ) ) {
-			$product->set_price( $data['price'] );
+		// Regular price only. Sale price, sale dates and the active price are
+		// this store's own: applying a 0.7.0 Host's sale_price ended this
+		// store's sales on every stock push. WooCommerce derives the active
+		// price from regular, sale and dates when the product saves.
+		$regular = isset( $data['regular_price'] ) ? (string) $data['regular_price'] : '';
+		if ( '' !== $regular && is_numeric( $regular ) ) {
+			$product->set_regular_price( $regular );
 		}
 
 		$product->save();
